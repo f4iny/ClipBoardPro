@@ -4,7 +4,7 @@ A lightweight, cross-platform clipboard manager built with Electron and React. I
 
 Beta 1.0.0
 
-**Download:** https://wenzgame.itch.io/clipboard-pro
+**Download:** from Releases section
 
 ---
 
