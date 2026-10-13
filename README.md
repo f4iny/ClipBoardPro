@@ -151,6 +151,9 @@ Choose your desired packaging format:
 > [!NOTE]
 > All compiled binaries, installers, and packaged bundles are saved in the `release/` folder.
 
+> [!TIP]
+> **Windows Note for Developers:** If you encounter `exit status 2: A required privilege is not held by the client` when packaging for the first time, enable **Developer Mode** in Windows Settings (*System → For developers → Developer Mode*) or run your terminal as Administrator once. This allows `electron-builder`'s archive extractor to process toolchain symlinks on Windows. For detailed context, see [GOTCHAS.md](./GOTCHAS.md#7-electron-builder-wincodesign-symlink-privilege-error-on-windows).
+
 
 ---
 
