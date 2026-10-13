@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { IoFilterOutline, IoGridOutline, IoListOutline, IoCloseOutline } from 'react-icons/io5'
+import { IoFunnelOutline, IoGridOutline, IoListOutline, IoCloseOutline } from 'react-icons/io5'
 import { useLanguage } from '../utils/i18n'
 import '../scss/Header.scss'
 
@@ -93,7 +93,7 @@ const Header = ({
                   title={t('header.filter')}
                   aria-label={t('header.filter')}
                 >
-                  <IoFilterOutline className="filter-icon" />
+                  <IoFunnelOutline className="filter-icon" />
                 </button>
                 {showFilterDropdown && (
                   <div className="dropdown-menu">

@@ -352,15 +352,13 @@ function startClipboardMonitoring() {
     // Silent error handling
   }
 
-  // Non-Windows fallback (Windows uses WM_CLIPBOARDUPDATE hook)
-  if (process.platform !== 'win32') {
-    if (!clipboardMonitorInterval) {
-      clipboardMonitorInterval = setInterval(() => {
-        if (isMonitoringActive && !isInternalCopy) {
-          clipboardDebouncer.trigger();
-        }
-      }, 500);
-    }
+  // Active clipboard polling interval ensures reliable capture across all platforms
+  if (!clipboardMonitorInterval) {
+    clipboardMonitorInterval = setInterval(() => {
+      if (isMonitoringActive && !isInternalCopy) {
+        clipboardDebouncer.trigger();
+      }
+    }, 350);
   }
 }
 

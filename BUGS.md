@@ -12,6 +12,7 @@ This file tracks all identified bugs, their root causes, and their verified fixe
 | **BUG-006** | ReferenceError on `screen` in `main.js` | Critical | **RESOLVED** | Static ESM import in `src/electron/main.js` |
 | **BUG-007** | High Idle Memory Footprint in Tray (~476 MB Working Set) | Medium | **RESOLVED** | ADR 0001 & `test/electron/memory_trim.test.js` |
 | **BUG-008** | GPU/CPU Load Spike during Active Scrolling on 240 Hz Displays | High | **RESOLVED** | Hardware compositing layers & CSS refactor |
+| **BUG-009** | Dormant Clipboard Monitoring on Windows (Missing OS Clipboard Listener Registration) | Critical | **RESOLVED** | Active cross-platform 350ms debounced interval |
 
 ---
 
@@ -59,3 +60,8 @@ This file tracks all identified bugs, their root causes, and their verified fixe
   - Removed remaining `backdrop-filter` from header and footer buttons.
   - Eliminated `box-shadow` and `translateY` animations from card `:hover` (replaced with GPU-accelerated border/background transitions).
   - Promoted scroll viewport and cards to composited hardware layers via `transform: translateZ(0)` and `will-change: scroll-position`.
+
+#### BUG-009: Dormant Clipboard Ingestion on Windows (Missing OS Clipboard Listener Registration)
+- **Symptoms:** Application completely failed to intercept Win+Shift+S screenshots and Ctrl+C text copy operations on Windows in standalone builds.
+- **Root Cause:** A conditional check `if (process.platform !== 'win32')` prevented the polling interval from starting on Windows under the assumption that `mainWindow.hookWindowMessage(0x031D)` was sufficient. However, Windows requires calling native Win32 `AddClipboardFormatListener(hwnd)` before it sends `WM_CLIPBOARDUPDATE (0x031D)`. Since native listener registration was absent, no messages were received and the polling interval was suppressed.
+- **Resolution:** Removed the `process.platform !== 'win32'` suppression, activating a reliable 350 ms polling interval coupled with the 50 ms `ClipboardDebouncer` across all platforms.
