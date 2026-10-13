@@ -1,4 +1,3 @@
-import React from 'react'
 import ClipboardItem from './ClipboardItem'
 import { useLanguage } from '../utils/i18n'
 import '../scss/ClipboardHistory.scss'

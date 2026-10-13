@@ -1,4 +1,3 @@
-import React from 'react'
 import '../scss/Footer.scss'
 
 const Footer = () => {
@@ -10,7 +9,7 @@ const Footer = () => {
             } else {
                 window.open(repoUrl, '_blank', 'noopener,noreferrer');
             }
-        } catch (error) {
+        } catch {
             window.open(repoUrl, '_blank', 'noopener,noreferrer');
         }
     };

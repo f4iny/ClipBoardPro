@@ -1,5 +1,4 @@
-// Header.jsx
-import React, { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { IoFilterOutline, IoGridOutline, IoListOutline, IoCloseOutline } from 'react-icons/io5'
 import { useLanguage } from '../utils/i18n'
 import '../scss/Header.scss'
@@ -17,7 +16,6 @@ const Header = ({
   onOpenSettings
 }) => {
   const { t } = useLanguage(); // Use translation hook
-  const [isSearchFocused, setIsSearchFocused] = useState(false)
   const [showFilterDropdown, setShowFilterDropdown] = useState(false)
   const filterRef = useRef(null)
 
@@ -70,8 +68,6 @@ const Header = ({
                 placeholder={t('header.searchPlaceholder')}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                onFocus={() => setIsSearchFocused(true)}
-                onBlur={() => setIsSearchFocused(false)}
               />
               {searchQuery && (
                 <button

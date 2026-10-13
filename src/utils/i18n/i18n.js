@@ -22,7 +22,7 @@ class I18n {
         if (electronLanguage && this.translations[electronLanguage]) {
           languageToUse = electronLanguage;
         }
-      } catch (error) {
+      } catch {
       }
     }
 

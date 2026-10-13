@@ -1,57 +1,74 @@
 # ClipBoard Pro
 
-A lightweight, cross-platform clipboard manager built with Electron and React. It sits in your system tray, watches your clipboard, and keeps a searchable history of everything you copy text, code snippets, and images.
+A high-performance, lightweight clipboard manager desktop utility for Windows, macOS, and Linux built with Electron and React. It sits quietly in your system tray, watches your clipboard, and maintains a searchable history of everything you copy — text, code snippets, and images.
 
-Beta 1.0.0
-
-**Download:** from Releases section
+**Version:** Beta 1.0.0  
+**Repository:** [github.com/f4iny/ClipBoardPro](https://github.com/f4iny/ClipBoardPro)  
+**License:** GNU General Public License v3.0
 
 ---
 
 ## Preview
 
 ![Preview 1](./Readme/p1.png)
-![Preview 1](./Readme/p2.png)
-![Preview 1](./Readme/p3.png)
-![Preview 1](./Readme/p4.png)
-![Preview 1](./Readme/p5.png)
+![Preview 2](./Readme/p2.png)
+![Preview 3](./Readme/p3.png)
+![Preview 4](./Readme/p4.png)
+![Preview 5](./Readme/p5.png)
 
 ---
 
-## Why This Exists
+## Why ClipBoard Pro?
 
-Every developer copies and pastes dozens of things a day. Most of it vanishes the moment you copy something new. ClipBoard Pro fixes that. It runs quietly in the background, stores your clipboard history locally, and lets you recall or re-copy any previous entry with a single click.
+Every developer copies and pastes dozens of snippets, paths, commands, and screenshots every day. Most of it vanishes the moment something new is copied. ClipBoard Pro solves this:
 
-No cloud. No accounts. No telemetry. Your data stays on your machine.
+- **Local & Private:** No cloud accounts, no telemetry, no tracking. Your clipboard data never leaves your machine.
+- **Ultra-Low Memory Footprint:** Background idle memory drops to under 26 MB in the system tray via Win32 working set trimming.
+- **Zero CPU Polling:** Event-driven Windows message hooks (`WM_CLIPBOARDUPDATE`) with 50 ms debouncing eliminate CPU wakeups.
+- **Disk-Backed Media Storage:** High-resolution screenshots are stored as PNG files on disk rather than bloating memory or exceeding browser quotas.
 
 ---
 
 ## Features
 
-- **Clipboard monitoring** — Automatically captures text, code, and image entries as you copy them.
-- **Search and filter** — Full-text search across your clipboard history. Filter by content type (text, code, image).
-- **Grid and list views** — Switch between a compact list or a visual grid layout depending on your workflow.
-- **Inline editing** — Edit any text or code entry directly from the app before re-copying it.
-- **Theme builder** — Create, import, and export custom themes with a full visual editor. Ships with dark and light themes out of the box.
-- **Keyboard shortcuts** — Configurable global hotkeys for quick access and clearing history.
-- **Internationalization** — Multi-language support with extensible translation files.
-- **System tray integration** — Minimizes to tray. Optional start-on-boot and start-minimized modes.
-- **Auto-delete policies** — Configure automatic cleanup intervals from 5 minutes to 30 days, or disable it entirely.
-- **Privacy controls** — Pause clipboard monitoring at any time. Option to clear history on close.
+- **Event-Driven Clipboard Monitoring** — Instantaneous capture of text, code, and image entries with debounced burst protection.
+- **Smart Content Detection** — Automatically categorizes copied entries into Text, Code, or Images.
+- **Fast Search & Filter** — Instant substring search across entries and quick filtering by type with dynamic counters.
+- **Grid and List Views** — Toggle between a visual card grid and a compact list layout with keyboard accessibility.
+- **Inline Editor** — Edit text and code entries directly in the app before re-copying or reusing.
+- **Visual Theme Builder** — Customize backgrounds, borders, accents, and button states with live preview, import, and export.
+- **Multi-Language Support (i18n)** — Available in 9 languages (English, Russian, Thai, Japanese, Korean, Chinese, Spanish, French, German).
+- **System Tray & Auto-Start** — Runs minimized to tray on startup, configurable global hotkeys, and minimize-on-close behavior.
+- **Automatic History Pruning** — Configurable auto-delete intervals (5 minutes to 30 days) and FIFO 50-item cache limits.
 
 ---
 
 ## Tech Stack
 
-| Layer        | Technology                          |
-|--------------|-------------------------------------|
-| Runtime      | Electron                            |
-| UI           | React                               |
-| Styling      | SCSS with CSS custom properties      |
-| Icons        | react-icons (Feather icon set)       |
-| i18n         | Custom lightweight i18n utility      |
-| Theming      | Runtime CSS variable injection       |
-| Build        | Electron Builder (assumed)           |
+| Layer | Technology | Description |
+|---|---|---|
+| **Runtime** | Electron 37 | ES Module main process with isolated context bridge |
+| **Renderer UI** | React 18 | Functional components with hooks and context |
+| **Bundler** | Vite 5 | Rapid compilation and hot module reloading |
+| **Styling** | SCSS | CSS custom properties, GPU-accelerated compositing |
+| **Icons** | `react-icons` | Feather & Ionicons glyph sets |
+| **Testing** | Vitest 2 & Happy-DOM | Comprehensive unit, utility, and state tests |
+| **Native Helpers** | C# / .NET (`trim_memory.exe`) | Win32 `psapi.dll` `EmptyWorkingSet` memory trimmer |
+| **Packaging** | Electron Builder | Multi-platform packaging targeting `release/` |
+
+---
+
+## Architectural Decisions & Documentation
+
+ClipBoard Pro is engineered according to formal Architecture Decision Records:
+
+- **[ADR-0001: Working Set Trimming on Idle](./docs/adr/0001-working-set-trimming-on-idle.md)** — Trims unmapped renderer and GPU memory 2 seconds after minimizing to tray.
+- **[ADR-0002: Media Storage Lifecycle & Reconciliation](./docs/adr/0002-media-storage-lifecycle-and-cleanup.md)** — Disk-backed PNG storage in `%APPDATA%\ClipBoardPro\media` prevents `QuotaExceededError` and V8 heap bloat.
+- **[ADR-0003: Event-Driven Clipboard Monitoring](./docs/adr/0003-event-driven-clipboard-monitoring.md)** — Event hooks replace continuous interval polling, protecting C-states and CPU thermals.
+- **[ADR-0004: Native Chromium Content Visibility](./docs/adr/0004-native-chromium-content-visibility.md)** — CSS `content-visibility: auto` off-screen rendering for smooth 240 Hz scrolling without virtualization artifacts.
+- **[BUGS Registry](./BUGS.md)** — Documented root causes and resolutions for all identified issues.
+- **[Decisions & Rationale](./DECISIONS.md)** — Engineering choices and evaluated alternatives.
+- **[Gotchas & Traps](./GOTCHAS.md)** — Platform quirks, task runner hooks, and packaging lessons.
 
 ---
 
@@ -59,8 +76,8 @@ No cloud. No accounts. No telemetry. Your data stays on your machine.
 
 ### Prerequisites
 
-- Node.js 18 or later
-- npm or yarn
+- **Node.js** 18 or later (tested on Node 20 & 24)
+- **npm** or **pnpm**
 
 ### Installation
 
@@ -72,148 +89,97 @@ npm install
 
 ### Development
 
+Run the Vite development server:
 ```bash
 npm run dev
 ```
 
-This launches the Electron app in development mode with hot reload enabled for the renderer process.
+Build native helpers and start Electron:
+```bash
+npm run electron
+```
+
+### Running Tests & Linting
+
+```bash
+# Run all Vitest test suites
+npm test
+
+# Run Vitest in watch mode
+npm run test:watch
+
+# Run ESLint checks
+npm run lint
+```
 
 ### Production Build
 
 ```bash
+# Compile native memory helper and bundle React frontend
 npm run build
+
+# Package Windows installer (.exe via NSIS)
+npm run dist:win
+
+# Package for current platform
+npm run dist
 ```
 
-Output binaries will be placed in the `dist/` directory. Platform-specific packaging is handled by Electron Builder see `electron-builder.yml` (or the relevant config in `package.json`) for target configuration.
+Installers and executables are output to the `release/` directory.
 
 ---
 
 ## Project Structure
 
 ```
-src/
-  components/
-    TitleBar.jsx          # Custom window title bar with minimize/maximize/close controls
-    Header.jsx            # Search bar, filters, view toggle, settings access
-    ClipboardHistory.jsx  # Main content area — renders the item list or empty state
-    ClipboardItem.jsx     # Individual clipboard entry with copy/edit/delete actions
-    EditModal.jsx         # Modal dialog for editing text and code entries
-    SettingsModal.jsx     # Application settings — appearance, language, storage, privacy, shortcuts
-    ThemeBuilder.jsx      # Visual theme editor with live preview, import/export
-    Footer.jsx            # Attribution and donation link
-  utils/
-    i18n.js               # Translation loader and React hook
-    themeManager.js        # Theme persistence, CSS variable generation, theme switching
-  scss/
-    *.scss                # Component-level stylesheets
+ClipBoardPro/
+├── src/
+│   ├── components/         # React UI components (Header, Item, Settings, ThemeBuilder)
+│   ├── electron/           # Main process, preload bridge, debouncers
+│   ├── utils/              # i18n localization, ThemeManager, helpers
+│   ├── scss/               # Component-level modular SCSS
+│   ├── App.jsx             # Main application orchestrator
+│   └── main.jsx            # React root entry point
+├── test/
+│   ├── electron/           # Unit tests for clipboard debouncer, media storage, memory trim
+│   ├── utils/              # Unit tests for ThemeManager and i18n
+│   └── components/         # Unit tests for filtering, search, and category counts
+├── resources/              # Native C# source and compiled helper binaries
+├── docs/                   # Architecture documentation and ADRs (0001-0004)
+├── scripts/                # Native build scripts (build-native.mjs)
+├── public/                 # Static application assets and logos
+├── BUGS.md                 # Registry of verified bug resolutions
+├── DECISIONS.md            # Technical decisions and rationale
+├── GOTCHAS.md              # Platform and packaging pitfalls
+└── package.json            # Scripts, dependencies, and Electron-Builder configuration
 ```
 
 ---
 
-## Theming
+## Keyboard Shortcuts
 
-ClipBoard Pro uses CSS custom properties for all visual styling. The built-in dark and light themes cover most use cases, but the Theme Builder lets you customize everything:
-
-- Background layers (primary, secondary, tertiary, elevated)
-- Text color hierarchy
-- Accent colors
-- Card appearance (background, border, radius, shadow)
-- Type indicator colors (text, code, image)
-- Action button colors and hover states
-
-Custom themes are stored as JSON and can be exported to share with others or imported from files. The theme format is stable and forward-compatible.
-
-### Creating a Theme
-
-1. Open Settings and click "Theme Builder".
-2. Adjust colors and layout properties in the left panel.
-3. Watch the live preview update in the right panel.
-4. Enter a theme name and author.
-5. Click "Save Theme".
-
-### Sharing Themes
-
-Use the "Export Theme" button to download a `.json` file. Others can import it through the Theme Builder's "Import Theme" button.
-
----
-
-## Internationalization
-
-Language files follow a flat key-value structure and are loaded at runtime. To add a new language:
-
-1. Create a new translation file in the i18n directory following the existing format.
-2. Register the language code and metadata in the supported languages list.
-3. All UI strings are accessed through the `useLanguage()` hook via the `t()` function.
-
-The active language persists across sessions.
-
----
-
-## Clipboard Handling
-
-When you copy an entry from within ClipBoard Pro back to your system clipboard, the app temporarily pauses its own clipboard monitor for 3 seconds to avoid re-capturing the same content as a new entry. This is handled automatically no user intervention required.
-
-Image entries are stored as base64 data URIs. For large images, be aware that this increases memory and storage usage proportionally.
-
----
-
-## Configuration
-
-All settings are accessible through the in-app Settings modal. Key options include:
-
-| Setting                | Description                                              | Default         |
-|------------------------|----------------------------------------------------------|-----------------|
-| Close behavior         | Minimize to tray or quit the application                 | Minimize        |
-| Start on boot          | Launch automatically when the system starts              | Off             |
-| Start minimized        | Open directly to the system tray                         | Off             |
-| Default view           | Grid or list layout                                      | Grid            |
-| Maximum items          | Clipboard history size limit                             | 50              |
-| Auto-delete            | Automatically remove entries after a time interval       | Never           |
-| Monitor clipboard      | Enable or disable clipboard watching                     | On              |
-| Quick access hotkey    | Global shortcut to bring the app to focus                | Configurable    |
-| Clear all hotkey       | Global shortcut to wipe clipboard history                | Configurable    |
-
-Settings persist between sessions via Electron's local storage APIs.
+| Shortcut | Description | Default |
+|---|---|---|
+| **Quick Access** | Bring ClipBoard Pro to focus at cursor position | `Ctrl+Shift+X` |
+| **Clear All** | Wipe clipboard history immediately | `Ctrl+Shift+Delete` |
+| **Escape** | Close open modals or settings | `Esc` |
+| **Ctrl+Enter** | Save inline entry edit | `Ctrl+Enter` |
 
 ---
 
 ## Contributing
 
-Contributions are welcome. If you are fixing a bug, please open an issue first so the problem can be discussed before you invest time in a pull request.
+Contributions are welcome! Please follow these standards:
 
-For new features, open an issue describing the use case and proposed approach. This helps avoid duplicate work and ensures the feature aligns with the project's scope.
-
-### Guidelines
-
-- Keep pull requests focused. One feature or fix per PR.
-- Follow the existing code style. The codebase uses functional React components with hooks throughout.
-- Test your changes on at least one platform (Windows, macOS, or Linux) before submitting.
-- Update translation files if your change introduces new UI strings.
+1. **Test Coverage:** Include automated tests in `test/` for any new logic or bugfixes.
+2. **Lint Cleanliness:** Ensure `npm run lint` passes with 0 errors and 0 warnings.
+3. **Build Integrity:** Ensure `npm run build` and `npm test` execute cleanly before submitting PRs.
 
 ---
 
 ## License
 
-GNU GENERAL PUBLIC LICENSE
-Version 3, 29 June 2007
+GNU GENERAL PUBLIC LICENSE  
+Version 3, 29 June 2007  
 
-Copyright (c) 2026 ClipBoard Pro
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU General Public License for more details.
-
-You should have received a copy of the GNU General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
----
-
-## Support & Contributing
-
-If you find this project useful, consider starring the repository on [GitHub](https://github.com/f4iny/ClipBoardPro). Issues and pull requests are welcome!
+Copyright (c) 2026 ClipBoard Pro ([f4iny](https://github.com/f4iny/ClipBoardPro))

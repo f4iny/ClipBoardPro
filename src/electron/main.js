@@ -7,13 +7,13 @@ import { execFile } from 'child_process';
 
 function getLogPath() {
   try { return path.join(app.getPath('userData'), 'app-debug.log'); }
-  catch (e) {
+  catch {
     try { return path.join(app.getPath('temp'), 'clipboardpro-debug.log'); }
-    catch (err) { return path.join(app.getAppPath(), 'app-debug.log'); }
+    catch { return path.join(app.getAppPath(), 'app-debug.log'); }
   }
 }
 function log(msg) {
-  try { fs.appendFileSync(getLogPath(), `${new Date().toISOString()} ${msg}\r\n`); } catch (e) {}
+  try { fs.appendFileSync(getLogPath(), `${new Date().toISOString()} ${msg}\r\n`); } catch {}
 }
 
 // --- Single Instance Lock ---
@@ -122,10 +122,10 @@ let hotkeys = {
 function getConfigFilePath() {
   try {
     return path.join(app.getPath('userData'), 'app-config.json');
-  } catch (e) {
+  } catch {
     try {
       return path.join(app.getPath('temp'), 'clipboardpro-config.json');
-    } catch (err) {
+    } catch {
       return path.join(app.getAppPath(), 'app-config.json');
     }
   }
@@ -225,7 +225,7 @@ function checkClipboardContent() {
                 const targetWidth = Math.max(1, Math.round(imgSize.width * (140 / imgSize.height)));
                 thumbnailDataURL = currentImage.resize({ width: targetWidth, height: 140, quality: 'better' }).toDataURL();
               }
-            } catch (e) {}
+            } catch {}
             
             const filePath = saveImageToDisk(currentImage);
             if (mainWindow && !mainWindow.isDestroyed()) {
@@ -240,7 +240,7 @@ function checkClipboardContent() {
         }
       }
     }
-  } catch (error) {
+  } catch {
     // Silent error handling
   }
 }
@@ -252,10 +252,6 @@ function markInternalCopy() {
   internalCopyTimeout = setTimeout(() => {
     isInternalCopy = false;
   }, 1200);
-}
-
-function checkInternalCopyFlag() {
-  return isInternalCopy;
 }
 
 function findIndexHtml() {
@@ -297,7 +293,7 @@ function setAutoStart(enabled) {
     });
     
     return true;
-  } catch (error) {
+  } catch {
     return false;
   }
 }
@@ -327,7 +323,7 @@ function getAutoStartStatus() {
       wasOpenedAtLogin: loginItemSettings.wasOpenedAtLogin,
       wasOpenedAsHidden: loginItemSettings.wasOpenedAsHidden
     };
-  } catch (error) {
+  } catch {
     return { openAtLogin: false, openAsHidden: false };
   }
 }
@@ -352,7 +348,7 @@ function startClipboardMonitoring() {
     lastClipboardText = clipboard.readText();
     const image = clipboard.readImage();
     lastClipboardImage = image.isEmpty() ? '' : image.toDataURL();
-  } catch (error) {
+  } catch {
     // Silent error handling
   }
 
@@ -420,7 +416,7 @@ function registerGlobalShortcuts() {
         setTimeout(checkClipboardForScreenshot, 2500);
       });
     }
-  } catch (error) {
+  } catch {
     // Silent error handling
   }
 }
@@ -449,7 +445,7 @@ function showWindowAtCursor() {
     }
     mainWindow.show();
     mainWindow.focus();
-  } catch (error) {
+  } catch {
     showWindow();
   }
 }
@@ -482,7 +478,7 @@ async function checkClipboardForScreenshot() {
               const targetWidth = Math.max(1, Math.round(imgSize.width * (140 / imgSize.height)));
               thumbnailDataURL = image.resize({ width: targetWidth, height: 140, quality: 'better' }).toDataURL();
             }
-          } catch (e) {}
+          } catch {}
           
           const filePath = saveImageToDisk(image);
           if (mainWindow && !mainWindow.isDestroyed()) {
@@ -496,14 +492,14 @@ async function checkClipboardForScreenshot() {
         }
       }
     }
-  } catch (error) {
+  } catch {
     // Silent error handling
   }
 }
 
 function createTray() {
   if (tray) {
-    try { tray.destroy(); } catch (e) {}
+    try { tray.destroy(); } catch {}
     tray = null;
   }
   
@@ -734,7 +730,7 @@ function createWindow() {
           return true;
         }
       }
-    } catch (e) {
+    } catch {
       log(`open-external rejected url: ${rawUrl}`);
     }
     return false;
@@ -769,7 +765,7 @@ app.on('window-all-closed', (event) => {
   event.preventDefault();
 });
 
-app.on('before-quit', (e) => {
+app.on('before-quit', () => {
   log(`app before-quit event (isQuitting: ${isQuitting})`);
   isQuitting = true;
   cancelMemoryTrim();
@@ -808,7 +804,7 @@ ipcMain.handle('stop-clipboard-monitoring', () => {
 ipcMain.handle('get-clipboard-text', () => {
   try {
     return clipboard.readText();
-  } catch (error) {
+  } catch {
     return '';
   }
 });
@@ -817,7 +813,7 @@ ipcMain.handle('get-clipboard-image', () => {
   try {
     const image = clipboard.readImage();
     return image.isEmpty() ? null : image.toDataURL();
-  } catch (error) {
+  } catch {
     return null;
   }
 });
@@ -829,7 +825,7 @@ ipcMain.handle('set-clipboard-text', (event, text) => {
     lastClipboardText = text;
     clipboard.writeText(text);
     return true;
-  } catch (error) {
+  } catch {
     return false;
   }
 });
@@ -849,7 +845,7 @@ ipcMain.handle('set-clipboard-image', (event, imageSource) => {
     lastImageSize = image.getSize();
     clipboard.writeImage(image);
     return true;
-  } catch (error) {
+  } catch {
     return false;
   }
 });
@@ -882,7 +878,7 @@ ipcMain.handle('media:clear-all', async () => {
       }
     }
     return true;
-  } catch (e) {}
+  } catch {}
   return false;
 });
 
@@ -901,7 +897,7 @@ ipcMain.handle('media:reconcile', async (event, activeFilePaths) => {
       }
     }
     return true;
-  } catch (e) {}
+  } catch {}
   return false;
 });
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import Header from './components/Header'
 import TitleBar from './components/TitleBar'
 import ClipboardHistory from './components/ClipboardHistory'
@@ -422,12 +422,24 @@ function App() {
           if (window.electronAPI?.media?.reconcile) {
             window.electronAPI.media.reconcile(activeImages)
           }
-        } catch (error) {
+        } catch {
           setClipboardHistory([])
         }
       }
       setLoading(false)
     }, 800)
+  }, [])
+
+  // Clear history handler
+  const clearHistory = useCallback(() => {
+    if (window.electronAPI?.media?.clearAll) {
+      window.electronAPI.media.clearAll()
+    }
+    setClipboardHistory([])
+    localStorage.removeItem('clipboardHistory')
+    lastContentRef.current = ''
+    lastTypeRef.current = ''
+    updateQueueRef.current = []
   }, [])
 
   // Set up clipboard monitoring
@@ -519,12 +531,12 @@ function App() {
                   }
                 }
               }
-            } catch (imageError) {
+            } catch {
               // Silent error handling
             }
           }
 
-        } catch (error) {
+        } catch {
           // Silent error handling
         }
       }
@@ -533,7 +545,7 @@ function App() {
         try {
           await checkClipboard()
           intervalId = setInterval(checkClipboard, 1500)
-        } catch (error) {
+        } catch {
           // Silent error handling
         }
       }
@@ -553,7 +565,7 @@ function App() {
         updateQueueRef.current = []
       }
     }
-  }, [addClipboardItem])
+  }, [addClipboardItem, clearHistory])
 
   // Save to localStorage
   useEffect(() => {
@@ -579,16 +591,6 @@ function App() {
   }, [clipboardHistory, filter, searchQuery])
 
   // Handlers
-  const clearHistory = useCallback(() => {
-    if (window.electronAPI?.media?.clearAll) {
-      window.electronAPI.media.clearAll()
-    }
-    setClipboardHistory([])
-    localStorage.removeItem('clipboardHistory')
-    lastContentRef.current = ''
-    lastTypeRef.current = ''
-    updateQueueRef.current = []
-  }, [])
 
   const deleteItem = useCallback((id) => {
     setClipboardHistory(prev => {

@@ -4,14 +4,14 @@ This file tracks all identified bugs, their root causes, and their verified fixe
 
 | ID | Title | Severity | Status | Verified By |
 | :--- | :--- | :--- | :--- | :--- |
-| **BUG-001** | `executeJavaScript` 500ms CPU Polling Loop | High | **RESOLVED** | Unit tests & `measure_perf_baseline.ps1` |
-| **BUG-002** | `QuotaExceededError` & V8 Heap Bloat from Base64 Images | High | **RESOLVED** | ADR 0002 & `slice2_media_storage.test.mjs` |
-| **BUG-003** | 150 `backdrop-filter: blur(10px)` GPU Shader Lag | High | **RESOLVED** | `glassmorphism_and_thumbnail.test.mjs` |
-| **BUG-004** | Hardcoded Zero Counts in Filter Dropdown Menu | Medium | **RESOLVED** | `filter_counts_and_icon.test.mjs` |
-| **BUG-005** | Filter Icon Mismatch (Sort Menu Icon Used Instead of Filter) | Low | **RESOLVED** | `filter_counts_and_icon.test.mjs` |
-| **BUG-006** | ReferenceError on `screen` in `main.js` | Critical | **RESOLVED** | `perf_and_bug_fixes.test.mjs` |
-| **BUG-007** | High Idle Memory Footprint in Tray (~476 MB Working Set) | Medium | **RESOLVED** | ADR 0001 & `slice1_memory_manager.test.mjs` |
-| **BUG-008** | GPU/CPU Load Spike during Active Scrolling on 240 Hz Displays | High | **RESOLVED** | `active_interaction_perf.test.mjs` |
+| **BUG-001** | `executeJavaScript` 500ms CPU Polling Loop | High | **RESOLVED** | `test/electron/clipboard_debouncer.test.js` |
+| **BUG-002** | `QuotaExceededError` & V8 Heap Bloat from Base64 Images | High | **RESOLVED** | ADR 0002 & `test/electron/media_storage.test.js` |
+| **BUG-003** | 150 `backdrop-filter: blur(10px)` GPU Shader Lag | High | **RESOLVED** | Visual audit & CSS gradient replacement |
+| **BUG-004** | Hardcoded Zero Counts in Filter Dropdown Menu | Medium | **RESOLVED** | `test/components/filtering_and_state.test.js` |
+| **BUG-005** | Filter Icon Mismatch (Sort Menu Icon Used Instead of Filter) | Low | **RESOLVED** | Header filter icon component verification |
+| **BUG-006** | ReferenceError on `screen` in `main.js` | Critical | **RESOLVED** | Static ESM import in `src/electron/main.js` |
+| **BUG-007** | High Idle Memory Footprint in Tray (~476 MB Working Set) | Medium | **RESOLVED** | ADR 0001 & `test/electron/memory_trim.test.js` |
+| **BUG-008** | GPU/CPU Load Spike during Active Scrolling on 240 Hz Displays | High | **RESOLVED** | Hardware compositing layers & CSS refactor |
 
 ---
 

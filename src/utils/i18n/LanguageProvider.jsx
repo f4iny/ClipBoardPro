@@ -1,8 +1,7 @@
 // src/utils/i18n/LanguageProvider.jsx
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import i18n from './i18n';
-
-const LanguageContext = createContext();
+import { LanguageContext } from './LanguageContext';
 
 export function LanguageProvider({ children, initialLanguage }) {
   const [language, setLanguageState] = useState(initialLanguage || i18n.getLanguage());
@@ -108,10 +107,4 @@ export function LanguageProvider({ children, initialLanguage }) {
   );
 }
 
-export function useLanguage() {
-  const context = useContext(LanguageContext);
-  if (!context) {
-    throw new Error('useLanguage must be used within a LanguageProvider');
-  }
-  return context;
-}
+export default LanguageProvider;

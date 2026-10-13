@@ -1,5 +1,4 @@
-// ClipboardItem.jsx - Fixed with improved copy handling for images
-import React, { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { FiImage, FiCode, FiType, FiCopy, FiEdit2, FiTrash2, FiCheck } from 'react-icons/fi'
 import { useLanguage } from '../utils/i18n'
 import '../scss/ClipboardItem.scss'

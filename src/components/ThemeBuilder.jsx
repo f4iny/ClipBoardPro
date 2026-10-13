@@ -1,16 +1,12 @@
-// ThemeBuilder.jsx - Single Page with Preview & Author
-import React, { useState, useEffect, useRef } from 'react'
-import { useLanguage } from '../utils/i18n'
+import { useState, useEffect, useRef } from 'react'
 import { themeManager } from '../utils/themeManager'
 import '../scss/ThemeBuilder.scss'
 
 const ThemeBuilder = ({ isOpen, onClose, currentTheme, onThemeApply }) => {
-  const { t } = useLanguage()
   const [themeName, setThemeName] = useState('')
   const [themeAuthor, setThemeAuthor] = useState('')
   const [isPreviewMode, setIsPreviewMode] = useState(false)
   const [unsavedChanges, setUnsavedChanges] = useState(false)
-  const [customThemes, setCustomThemes] = useState([])
   const [isLoading, setIsLoading] = useState(false)
   const fileInputRef = useRef(null)
 
@@ -98,24 +94,14 @@ const ThemeBuilder = ({ isOpen, onClose, currentTheme, onThemeApply }) => {
     }
   })
 
-  // Load custom themes on component mount
+  // Load current theme on component mount if custom
   useEffect(() => {
     if (isOpen) {
-      loadCustomThemes()
       if (currentTheme && !['dark', 'light'].includes(currentTheme)) {
         loadThemeConfig(currentTheme)
       }
     }
   }, [isOpen, currentTheme])
-
-  const loadCustomThemes = async () => {
-    try {
-      const themes = await themeManager.getAvailableThemes()
-      setCustomThemes(themes.filter(theme => !['dark', 'light'].includes(theme)))
-    } catch (error) {
-      console.error('Failed to load custom themes:', error)
-    }
-  }
 
   const loadThemeConfig = async (themeName) => {
     try {
@@ -189,7 +175,6 @@ const ThemeBuilder = ({ isOpen, onClose, currentTheme, onThemeApply }) => {
       }
 
       await themeManager.saveTheme(themeName, themeToSave)
-      await loadCustomThemes()
       setUnsavedChanges(false)
       onThemeApply(themeName)
       alert('Theme saved successfully!')

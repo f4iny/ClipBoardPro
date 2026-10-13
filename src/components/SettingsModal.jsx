@@ -1,5 +1,4 @@
-// SettingsModal.jsx (Updated with ThemeBuilder integration)
-import React, { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { useLanguage } from '../utils/i18n'
 import '../scss/SettingsModal.scss'
 
@@ -9,14 +8,12 @@ const SettingsModal = ({
   onClearAllData, 
   onResetSettings,
   onOpenThemeBuilder,
-  onOpenIconCustomizer,
   viewMode,
   setViewMode,
   theme,
   setTheme,
   availableThemes = ['dark', 'light'],
   refreshThemes,
-  language,
   setLanguage,
   closeBehavior,
   setCloseBehavior,
@@ -24,8 +21,6 @@ const SettingsModal = ({
   setStartMinimized,
   autoStart,
   setAutoStart,
-  showTrayNotifications,
-  setShowTrayNotifications,
   quickAccessHotkey,
   setQuickAccessHotkey,
   clearAllHotkey,
@@ -245,7 +240,7 @@ const SettingsModal = ({
           const parsed = JSON.parse(themeData)
           return parsed.displayName || parsed.name || themeName
         }
-      } catch (error) {
+      } catch {
         // Fallback to theme name
       }
     }
