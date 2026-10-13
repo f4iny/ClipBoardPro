@@ -16,10 +16,11 @@
     "dev:react": "vite",
     "electron": "npm run build && electron .",
     "build": "node scripts/build-native.mjs && vite build",
-    "dist": "npm run build && electron-builder",
+    "dist": "npm run build && electron-builder && node scripts/generate-checksums.mjs",
     "dist:linux": "npm run build && electron-builder --linux",
-    "dist:win": "npm run build && electron-builder --win",
+    "dist:win": "npm run build && electron-builder --win && node scripts/generate-checksums.mjs",
     "dist:dir": "npm run build && electron-builder --dir",
+    "dist:checksums": "node scripts/generate-checksums.mjs",
     "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -65,7 +66,20 @@
       "main": "src/electron/main.js"
     },
     "win": {
-      "target": "nsis",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
       "icon": "public/images/ClipBoardPro_Logo.ico"
     },
     "nsis": {

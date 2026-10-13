@@ -126,17 +126,20 @@ This compiles the native C# working set memory trimmer (`resources/TrimMemory.cs
 
 Choose your desired packaging format:
 
-- **Windows NSIS Installer (`.exe`):**
+- **Windows Package Suite (Installer + Portable `.zip` + Checksums):**
   ```bash
   npm run dist:win
   ```
-  Creates a full Windows setup wizard (`release/ClipBoardPro Setup 1.0.0.exe`) with options to customize installation location and create desktop/start-menu shortcuts.
+  Creates:
+  1. Windows setup wizard: `release/ClipBoardPro Setup 1.0.0.exe` (NSIS with shortcut & install directory options).
+  2. Standalone portable archive: `release/ClipBoardPro-1.0.0-win.zip` (ready for zero-install extraction).
+  3. Integrity checksums: `release/SHA256SUMS.txt` (SHA-256 hashes for all generated release artifacts).
 
-- **Standalone Unpacked Directory (Portable `.exe`):**
+- **Standalone Unpacked Directory (`win-unpacked`):**
   ```bash
   npm run dist:dir
   ```
-  Generates an unpacked folder (`release/win-unpacked/ClipBoardPro.exe`) that can be launched immediately without running an installer or zipped for portable distribution.
+  Generates an unpacked development folder (`release/win-unpacked/ClipBoardPro.exe`) for fast local testing without archiving.
 
 - **Linux AppImage:**
   ```bash
