@@ -1,6 +1,6 @@
 // ClipboardItem.scss - Theme Compatible with Improved Layout
 .clipboard-item {
-  background: #111111;
+  background: var(--clipboard-bg, #111111);
   border: none;
   border-radius: var(--radius-md);
   content-visibility: auto;
@@ -12,6 +12,10 @@
   position: relative;
   overflow: hidden;
   box-shadow: none;
+
+  [data-theme="light"] & {
+    background: var(--clipboard-bg, var(--bg-secondary));
+  }
   
   &.text {
     --type-color: var(--type-text-bg, #FF1A00);
