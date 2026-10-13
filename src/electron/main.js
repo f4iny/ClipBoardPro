@@ -1,3 +1,4 @@
+import { ClipboardDebouncer } from './clipboard_debouncer.js';
 import { app, BrowserWindow, ipcMain, shell, Tray, Menu, nativeImage, clipboard, globalShortcut, screen } from 'electron';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -154,13 +155,89 @@ function saveConfig() {
   }
 }
 
-// เพิ่มตัวแปรสำหรับ clipboard monitoring
-let clipboardMonitorInterval;
+// เพิ่มตัวแปรสำหรับ clipboard monitoring (ADR-0003)
+let clipboardMonitorInterval = null;
 let lastClipboardText = '';
 let lastClipboardImage = '';
 let lastImageSize = null;
 let isMonitoringActive = false;
 let isInternalCopy = false;
+
+const clipboardDebouncer = new ClipboardDebouncer({
+  delayMs: 50,
+  onClipboardChange: () => checkClipboardContent()
+});
+
+function checkClipboardContent() {
+  if (!isMonitoringActive || isInternalCopy) return;
+
+  try {
+    // 1. ตรวจสอบ text
+    const currentText = clipboard.readText();
+    if (currentText && 
+        currentText !== lastClipboardText && 
+        currentText.trim() !== '' &&
+        currentText.length > 0 &&
+        currentText.length < 1000000) {
+      
+      lastClipboardText = currentText;
+      
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('clipboard-changed', {
+          type: 'text',
+          content: currentText,
+          timestamp: new Date().toISOString()
+        });
+      }
+    }
+
+    // 2. ตรวจสอบ image
+    const formats = clipboard.availableFormats();
+    const hasImageFormat = formats.some(f => f.includes('image') || f === 'CF_DIB' || f === 'CF_BITMAP');
+    if (hasImageFormat) {
+      const currentImage = clipboard.readImage();
+      if (!currentImage.isEmpty()) {
+        const imgSize = currentImage.getSize();
+        const sameAsLast = lastImageSize && 
+                           lastImageSize.width === imgSize.width && 
+                           lastImageSize.height === imgSize.height && 
+                           lastClipboardImage !== '';
+        if (!sameAsLast) {
+          const imageDataURL = currentImage.toDataURL();
+          if (imageDataURL && 
+              imageDataURL !== lastClipboardImage && 
+              imageDataURL !== '' &&
+              imageDataURL.length > 100 &&
+              imageDataURL.length < 50000000) {
+            
+            lastClipboardImage = imageDataURL;
+            lastImageSize = imgSize;
+            
+            let thumbnailDataURL = imageDataURL;
+            try {
+              if (imgSize.height > 140) {
+                const targetWidth = Math.max(1, Math.round(imgSize.width * (140 / imgSize.height)));
+                thumbnailDataURL = currentImage.resize({ width: targetWidth, height: 140, quality: 'better' }).toDataURL();
+              }
+            } catch (e) {}
+            
+            const filePath = saveImageToDisk(currentImage);
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.webContents.send('clipboard-changed', {
+                type: 'image',
+                content: filePath,
+                thumbnail: thumbnailDataURL,
+                timestamp: new Date().toISOString()
+              });
+            }
+          }
+        }
+      }
+    }
+  } catch (error) {
+    // Silent error handling
+  }
+}
 let internalCopyTimeout = null;
 
 function markInternalCopy() {
@@ -258,7 +335,7 @@ function handleCommandLineArgs() {
   }
 }
 
-// ปรับปรุง Clipboard Monitoring ให้ตรวจสอบ global flag
+// Event-Driven Clipboard Monitoring with 50 ms Debounce (ADR-0003)
 function startClipboardMonitoring() {
   if (isMonitoringActive) return;
   isMonitoringActive = true;
@@ -270,82 +347,22 @@ function startClipboardMonitoring() {
   } catch (error) {
     // Silent error handling
   }
-  
-  clipboardMonitorInterval = setInterval(() => {
-    if (!isMonitoringActive) return;
-    if (isInternalCopy) return;
-    
-    try {
-      // 1. ตรวจสอบ text
-      const currentText = clipboard.readText();
-      if (currentText && 
-          currentText !== lastClipboardText && 
-          currentText.trim() !== '' &&
-          currentText.length > 0 &&
-          currentText.length < 1000000) {
-        
-        lastClipboardText = currentText;
-        
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('clipboard-changed', {
-            type: 'text',
-            content: currentText,
-            timestamp: new Date().toISOString()
-          });
-        }
-      }
 
-      // 2. ตรวจสอบ image (เร็ว: сначала проверяем форматы)
-      const formats = clipboard.availableFormats();
-      const hasImageFormat = formats.some(f => f.includes('image') || f === 'CF_DIB' || f === 'CF_BITMAP');
-      if (hasImageFormat) {
-        const currentImage = clipboard.readImage();
-        if (!currentImage.isEmpty()) {
-          const imgSize = currentImage.getSize();
-          const sameAsLast = lastImageSize && 
-                             lastImageSize.width === imgSize.width && 
-                             lastImageSize.height === imgSize.height && 
-                             lastClipboardImage !== '';
-          if (!sameAsLast) {
-            const imageDataURL = currentImage.toDataURL();
-            if (imageDataURL && 
-                imageDataURL !== lastClipboardImage && 
-                imageDataURL !== '' &&
-                imageDataURL.length > 100 &&
-                imageDataURL.length < 50000000) {
-              
-              lastClipboardImage = imageDataURL;
-              lastImageSize = imgSize;
-              
-              let thumbnailDataURL = imageDataURL;
-              try {
-                if (imgSize.height > 140) {
-                  const targetWidth = Math.max(1, Math.round(imgSize.width * (140 / imgSize.height)));
-                  thumbnailDataURL = currentImage.resize({ width: targetWidth, height: 140, quality: 'better' }).toDataURL();
-                }
-              } catch (e) {}
-              
-              const filePath = saveImageToDisk(currentImage);
-              if (mainWindow && !mainWindow.isDestroyed()) {
-                mainWindow.webContents.send('clipboard-changed', {
-                  type: 'image',
-                  content: filePath,
-                  thumbnail: thumbnailDataURL,
-                  timestamp: new Date().toISOString()
-                });
-              }
-            }
-          }
+  // Non-Windows fallback (Windows uses WM_CLIPBOARDUPDATE hook)
+  if (process.platform !== 'win32') {
+    if (!clipboardMonitorInterval) {
+      clipboardMonitorInterval = setInterval(() => {
+        if (isMonitoringActive && !isInternalCopy) {
+          clipboardDebouncer.trigger();
         }
-      }
-    } catch (error) {
-      // Silent error handling
+      }, 500);
     }
-  }, 500);
+  }
 }
 
 function stopClipboardMonitoring() {
   isMonitoringActive = false;
+  clipboardDebouncer.cancel();
   if (clipboardMonitorInterval) {
     clearInterval(clipboardMonitorInterval);
     clipboardMonitorInterval = null;
@@ -645,6 +662,18 @@ function createWindow() {
       startClipboardMonitoring();
     }
   });
+
+  if (process.platform === 'win32') {
+    try {
+      mainWindow.hookWindowMessage(0x031D, () => {
+        if (isMonitoringActive && !isInternalCopy) {
+          clipboardDebouncer.trigger();
+        }
+      });
+    } catch (err) {
+      log('Failed to hook WM_CLIPBOARDUPDATE: ' + err);
+    }
+  }
 
   // Window controls
   ipcMain.handle('window-minimize', () => {

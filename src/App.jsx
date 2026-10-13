@@ -743,6 +743,16 @@ function App() {
     }
   }, [handleThemeChange])
 
+  const categoryCounts = useMemo(() => {
+    const counts = { all: clipboardHistory.length, text: 0, image: 0, code: 0 };
+    for (const item of clipboardHistory) {
+      if (item.type === 'text') counts.text++;
+      else if (item.type === 'image') counts.image++;
+      else if (item.type === 'code') counts.code++;
+    }
+    return counts;
+  }, [clipboardHistory]);
+
   return (
     <LanguageProvider initialLanguage={language}>
     <div className="app">
@@ -752,6 +762,7 @@ function App() {
         setFilter={setFilter}
         clearHistory={clearHistory}
         totalItems={clipboardHistory.length}
+        categoryCounts={categoryCounts}
         searchQuery={searchQuery}
         setSearchQuery={setSearchQuery}
         viewMode={viewMode}

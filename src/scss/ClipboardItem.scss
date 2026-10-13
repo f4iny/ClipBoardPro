@@ -15,8 +15,7 @@
   
   &:hover {
     background: var(--bg-tertiary);
-    transform: translateY(-2px);
-    box-shadow: var(--shadow-lg);
+    border-color: var(--border-secondary);
   }
   
   // Type-specific top border accent - REMOVED
@@ -268,7 +267,7 @@
         &:hover {
           background: var(--bg-tertiary);
           color: var(--text-primary);
-          transform: translateY(-1px);
+          
         }
         
         &.copy-btn {
@@ -510,7 +509,7 @@
         &:hover {
           background: var(--bg-tertiary);
           color: var(--text-primary);
-          transform: translateY(-1px);
+          
         }
         
         &.copy-btn {

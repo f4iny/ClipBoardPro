@@ -9,6 +9,7 @@ const Header = ({
   setFilter,
   clearHistory,
   totalItems,
+  categoryCounts,
   searchQuery,
   setSearchQuery,
   viewMode,
@@ -21,10 +22,10 @@ const Header = ({
   const filterRef = useRef(null)
 
   const filterOptions = [
-    { value: 'all', label: t('filter.all'), count: totalItems },
-    { value: 'text', label: t('filter.text'), count: 0 },
-    { value: 'image', label: t('filter.images'), count: 0 },
-    { value: 'code', label: t('filter.code'), count: 0 }
+    { value: 'all', label: t('filter.all'), count: categoryCounts?.all ?? totalItems },
+    { value: 'text', label: t('filter.text'), count: categoryCounts?.text ?? 0 },
+    { value: 'image', label: t('filter.images'), count: categoryCounts?.image ?? 0 },
+    { value: 'code', label: t('filter.code'), count: categoryCounts?.code ?? 0 }
   ]
 
   // ปิด dropdown เมื่อคลิกข้างนอก

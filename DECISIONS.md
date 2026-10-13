@@ -62,8 +62,11 @@ This document explains why key engineering decisions were made in ClipBoardPro, 
 
 ---
 
-### DEC-006: In-Place Asar Patching without Unpacking Dependencies
-- **Decision:** Use in-memory buffer patching (`scratch/patch_asar_fast.js`) that reads existing asar binaries and swaps out only target files, rather than unpacking the entire `app.asar` into the workspace.
+### DEC-006: Pure Source Build over In-Place Asar Patching (Superseded)
+- **Status:** **Superseded by Fork Repository Migration.**
+- **Evolution:**
+  - *Initial Stage (Installed Binary):* When maintaining the installed `Program Files` binary without source code, in-place buffer patching (`patch_asar_fast.js`) was used to avoid unpacking 3,690+ `lucide-react` files into the workspace.
+  - *Final Stage (Fork Repository):* Migrated to the full developer fork repository (`f4iny/ClipBoardPro`). Code is authored in pure source files (`src/`, `docs/`, `resources/`) and built standardly via Vite and `pnpm run build`.
 - **Why this way:**
   - Unpacking `app.asar` writes ~3,690 icon files from `lucide-react` into the file tree, bloating IDE indexers, context tokens, and session startup time.
   - In-place patching completes in under 1 second without leaving thousands of scratch files on disk.
