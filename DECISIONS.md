@@ -70,3 +70,19 @@ This document explains why key engineering decisions were made in ClipBoardPro, 
 - **Why this way:**
   - Unpacking `app.asar` writes ~3,690 icon files from `lucide-react` into the file tree, bloating IDE indexers, context tokens, and session startup time.
   - In-place patching completes in under 1 second without leaving thousands of scratch files on disk.
+
+---
+
+### DEC-007: Compositor Frame Rate Cap (120 FPS) and Complete Purge of Recurring Blur Shaders (ADR 0005)
+- **Decision:**
+  1. Purge all `backdrop-filter: blur(...)` shaders from recurring clipboard list items (`ClipboardItem.scss`) and replace them with `none`.
+  2. Replace card `box-shadow` with solid `1px solid var(--border-secondary)` borders.
+  3. Cap the Chromium compositor frame rate to 120 FPS using `app.commandLine.appendSwitch('limit-fps', '120')`.
+  4. Replace JavaScript `MutationObserver` and `getComputedStyle` theme color polling inside `ClipboardItem.jsx` with native CSS variables scoped to card classes (`.text`, `.code`, `.image`).
+- **Why this way:**
+  - `backdrop-filter` forces the Skia GPU pipeline to execute Gaussian blur convolution passes on every frame across moving pixels during scrolling. When scrolling on high-refresh monitors with multiple cards in viewport, 35–45 blur passes per frame caused GPU spikes up to ~47%.
+  - Capping the compositor to 120 FPS prevents uncapped frame generation (e.g. on 240+ Hz monitors or high-DPI displays) while preserving peak visual smoothness.
+  - Native CSS variables eliminate 50 active `MutationObserver` instances in the React DOM.
+- **Rejected Alternatives:**
+  - *Leaving backdrop-filter with CSS contain:* `contain` cannot isolate `backdrop-filter` because the effect inherently samples external background pixels behind the element.
+

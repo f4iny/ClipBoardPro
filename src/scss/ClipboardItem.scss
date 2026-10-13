@@ -1,21 +1,34 @@
 // ClipboardItem.scss - Theme Compatible with Improved Layout
 .clipboard-item {
   background: var(--bg-secondary);
-  border: none;
+  border: 1px solid var(--border-secondary);
   border-radius: var(--radius-md);
   content-visibility: auto;
   contain: paint;
   contain-intrinsic-size: 0 140px;
-  transition: all var(--transition-normal);
+  transition: background var(--transition-fast), border-color var(--transition-fast);
   display: flex;
   flex-direction: column;
   position: relative;
   overflow: hidden;
-  box-shadow: var(--shadow-md);
+  box-shadow: none;
+  
+  &.text {
+    --type-color: var(--type-text-bg, #FF1A00);
+    --type-text-color: var(--type-text-color, #FFFFFF);
+  }
+  &.code {
+    --type-color: var(--type-code-bg, #8b5cf6);
+    --type-text-color: var(--type-code-color, #FFFFFF);
+  }
+  &.image {
+    --type-color: var(--type-image-bg, #22c55e);
+    --type-text-color: var(--type-image-color, #FFFFFF);
+  }
   
   &:hover {
     background: var(--bg-tertiary);
-    border-color: var(--border-secondary);
+    border-color: var(--border-primary, var(--border-secondary));
   }
   
   // Type-specific top border accent - REMOVED
@@ -57,7 +70,7 @@
       padding: 2px 6px;
       border-radius: var(--radius-sm);
       font-family: var(--font-family-mono);
-      backdrop-filter: blur(10px);
+      backdrop-filter: none;
       z-index: 2;
       
       @media (max-width: 520px) {
@@ -84,7 +97,7 @@
           display: flex;
           align-items: center;
           justify-content: center;
-          box-shadow: var(--shadow-md);
+          box-shadow: none;
           flex-shrink: 0;
           
           @media (max-width: 520px) {
@@ -249,7 +262,7 @@
         font-weight: 500;
         transition: all var(--transition-normal);
         min-height: 32px;
-        backdrop-filter: blur(10px);
+        backdrop-filter: none;
         
         @media (max-width: 520px) {
           min-height: 28px;
@@ -342,7 +355,7 @@
           align-items: center;
           justify-content: center;
           flex-shrink: 0;
-          box-shadow: var(--shadow-md);
+          box-shadow: none;
           
           @media (max-width: 480px) {
             width: 20px;
@@ -499,7 +512,7 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        backdrop-filter: blur(10px);
+        backdrop-filter: none;
         
         @media (max-width: 480px) {
           height: 24px;

@@ -24,6 +24,9 @@ if (!gotTheLock) {
   app.quit();
 }
 
+// Cap Chromium compositor frame rate to 120 FPS to prevent GPU saturation on high-refresh displays
+app.commandLine.appendSwitch('limit-fps', '120');
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const iconPath = path.join(app.getAppPath(), 'dist-react', 'images', 'ClipBoardPro_Logo.ico');

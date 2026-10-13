@@ -102,7 +102,7 @@
       transition: all var(--transition-normal);
       text-decoration: none;
       height: 20px;
-      backdrop-filter: blur(10px);
+      backdrop-filter: none;
       white-space: nowrap;
       
       &:focus,

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { FiImage, FiCode, FiType, FiCopy, FiEdit2, FiTrash2, FiCheck } from 'react-icons/fi'
 import { useLanguage } from '../utils/i18n'
 import '../scss/ClipboardItem.scss'
@@ -6,94 +6,28 @@ import '../scss/ClipboardItem.scss'
 const ClipboardItem = ({ item, index, onDelete, onCopy, onEdit, viewMode }) => {
   const { t, formatRelativeTime } = useLanguage();
   const [copied, setCopied] = useState(false)
-  const [themeTypeColors, setThemeTypeColors] = useState({})
-
-  // Listen for theme changes to update type colors
-  useEffect(() => {
-    const updateTypeColors = () => {
-      const root = document.documentElement
-      const computedStyle = getComputedStyle(root)
-      
-      setThemeTypeColors({
-        text: {
-          background: computedStyle.getPropertyValue('--type-text-bg')?.trim() || '#FF1A00',
-          color: computedStyle.getPropertyValue('--type-text-color')?.trim() || '#FFFFFF'
-        },
-        code: {
-          background: computedStyle.getPropertyValue('--type-code-bg')?.trim() || '#8b5cf6',
-          color: computedStyle.getPropertyValue('--type-code-color')?.trim() || '#FFFFFF'
-        },
-        image: {
-          background: computedStyle.getPropertyValue('--type-image-bg')?.trim() || '#22c55e',
-          color: computedStyle.getPropertyValue('--type-image-color')?.trim() || '#FFFFFF'
-        }
-      })
-    }
-
-    // Initial load
-    updateTypeColors()
-
-    // Listen for theme changes
-    const handleThemeChange = () => {
-      setTimeout(updateTypeColors, 100) // Small delay to ensure CSS is applied
-    }
-
-    window.addEventListener('themeChanged', handleThemeChange)
-    window.addEventListener('cardCustomizationChanged', handleThemeChange)
-
-    // Also listen for CSS variable changes using MutationObserver
-    const observer = new MutationObserver((mutations) => {
-      mutations.forEach((mutation) => {
-        if (mutation.type === 'attributes' && 
-            (mutation.attributeName === 'data-theme' || 
-             mutation.attributeName === 'data-custom-theme')) {
-          handleThemeChange()
-        }
-      })
-    })
-
-    observer.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ['data-theme', 'data-custom-theme']
-    })
-
-    return () => {
-      window.removeEventListener('themeChanged', handleThemeChange)
-      window.removeEventListener('cardCustomizationChanged', handleThemeChange)
-      observer.disconnect()
-    }
-  }, [])
 
   const formatTimestamp = (timestamp) => {
     return formatRelativeTime(timestamp);
   }
 
   const getTypeConfig = (type) => {
-    // Get theme-specific colors if available, otherwise use defaults
-    const themeColors = themeTypeColors[type]
-    
     switch (type) {
       case 'image': 
         return { 
           icon: FiImage, 
-          label: t('item.image'),
-          color: themeColors?.background || '#22c55e',
-          textColor: themeColors?.color || '#FFFFFF'
+          label: t('item.image')
         }
       case 'code': 
         return { 
           icon: FiCode, 
-          label: t('item.code'),
-          color: themeColors?.background || '#8b5cf6',
-          textColor: themeColors?.color || '#FFFFFF'
+          label: t('item.code')
         }
       case 'text': 
       default:
         return { 
           icon: FiType, 
-          label: t('item.text'),
-          color: themeColors?.background || '#FF1A00',
-          textColor: themeColors?.color || '#FFFFFF'
+          label: t('item.text')
         }
     }
   }
@@ -166,10 +100,6 @@ const ClipboardItem = ({ item, index, onDelete, onCopy, onEdit, viewMode }) => {
   return (
     <div 
       className={`clipboard-item ${item.type} ${viewMode}`} 
-      style={{
-        '--type-color': typeConfig.color,
-        '--type-text-color': typeConfig.textColor
-      }}
       data-type={item.type}
     >
       {viewMode === 'grid' && (
@@ -180,13 +110,7 @@ const ClipboardItem = ({ item, index, onDelete, onCopy, onEdit, viewMode }) => {
       
       <div className="item-header">
         <div className="type-indicator">
-          <div 
-            className={`type-icon type-icon-${item.type}`}
-            style={{
-              backgroundColor: typeConfig.color,
-              color: typeConfig.textColor
-            }}
-          >
+          <div className={`type-icon type-icon-${item.type}`}>
             <IconComponent size={14} />
           </div>
           <div className="type-info">

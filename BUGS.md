@@ -65,3 +65,17 @@ This file tracks all identified bugs, their root causes, and their verified fixe
 - **Symptoms:** Application completely failed to intercept Win+Shift+S screenshots and Ctrl+C text copy operations on Windows in standalone builds.
 - **Root Cause:** A conditional check `if (process.platform !== 'win32')` prevented the polling interval from starting on Windows under the assumption that `mainWindow.hookWindowMessage(0x031D)` was sufficient. However, Windows requires calling native Win32 `AddClipboardFormatListener(hwnd)` before it sends `WM_CLIPBOARDUPDATE (0x031D)`. Since native listener registration was absent, no messages were received and the polling interval was suppressed.
 - **Resolution:** Removed the `process.platform !== 'win32'` suppression, activating a reliable 350 ms polling interval coupled with the 50 ms `ClipboardDebouncer` across all platforms.
+
+#### BUG-010: High GPU Load (~47%) During Scrolling from Unpurged Backdrop-Filter Shaders & Uncapped FPS
+- **Symptoms:** Scrolling through clipboard cards spikes and sustains GPU 3D engine usage at ~47%.
+- **Root Cause:**
+  1. `ClipboardItem.scss` retained `backdrop-filter: blur(10px)` on `.item-number` and all action buttons (`.item-actions button` and `.action-btn`). With 8–10 cards on screen, Skia performed 35–45 real-time Gaussian blur passes per frame across changing background pixels during scroll.
+  2. `box-shadow: var(--shadow-md)` on each card and type icon forced texture re-rasterization on layout updates.
+  3. Chromium compositor had no frame rate cap, rendering at uncapped monitor refresh rates (120–240 Hz).
+  4. Each `ClipboardItem.jsx` instance mounted an independent `MutationObserver` on `document.documentElement` and two `window` event listeners.
+- **Resolution:**
+  - Removed all `backdrop-filter` blur shaders from recurring card elements, setting them to `none`.
+  - Replaced card `box-shadow` with crisp hardware-composited `1px solid var(--border-secondary)` borders.
+  - Added Chromium command-line switch `app.commandLine.appendSwitch('limit-fps', '120')` in `main.js`.
+  - Replaced JS `MutationObserver` and `getComputedStyle` in `ClipboardItem.jsx` with native CSS variables scoped to card type classes (`.text`, `.code`, `.image`).
+
