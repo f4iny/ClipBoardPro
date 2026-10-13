@@ -65,8 +65,8 @@ No cloud. No accounts. No telemetry. Your data stays on your machine.
 ### Installation
 
 ```bash
-git clone https://github.com/your-username/clipboard-pro.git
-cd clipboard-pro
+git clone https://github.com/f4iny/ClipBoardPro.git
+cd ClipBoardPro
 npm install
 ```
 
@@ -214,6 +214,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 ---
 
-## Support
+## Support & Contributing
 
-If you find this project useful, consider supporting development through [Ko-fi](https://ko-fi.com/wenzdev).
+If you find this project useful, consider starring the repository on [GitHub](https://github.com/f4iny/ClipBoardPro). Issues and pull requests are welcome!

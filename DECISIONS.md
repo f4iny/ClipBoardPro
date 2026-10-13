@@ -1,6 +1,6 @@
 # Architecture & Engineering Decisions (DECISIONS)
 
-This document explains why key engineering decisions were made in ClipBoardPro, the trade-offs evaluated, and rejected alternatives. For formal architecture documents, see [docs/adr/](file:///d:/Program%20Files/ClipBoardPro/docs/adr/).
+This document explains why key engineering decisions were made in ClipBoardPro, the trade-offs evaluated, and rejected alternatives. For formal architecture documents, see [docs/adr/](./docs/adr/).
 
 ---
 

@@ -23,7 +23,7 @@ ClipBoardPro is a lightweight, high-performance clipboard management desktop uti
    - Follow Chromium pickle header alignment: `payloadSize = alignedHeaderSize + 8` with 4-byte boundary padding.
 3. **Detached Process Spawning:**
    - Spawning `ClipBoardPro.exe` via PowerShell's `Start-Process` inside task runners attaches the process to Windows job objects, terminating the app when the task ends.
-   - Always spawn detached via WMI: `Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{ CommandLine = '"D:\Program Files\ClipBoardPro\ClipBoardPro.exe"' }`.
+   - Always spawn detached via WMI: `Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{ CommandLine = '"{0}"' -f ($env:ProgramFiles + '\ClipBoardPro\ClipBoardPro.exe') }`.
    - Wait at least 1000–1200 ms after `Stop-Process` before starting to avoid the single-instance lock race condition.
 4. **Contextual Knowledge & Markdown Interaction Rules:**
    - **`GOTCHAS.md` (Traps, quirks, and engineering solutions):**

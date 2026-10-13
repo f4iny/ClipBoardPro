@@ -7,7 +7,10 @@ import { execFile } from 'child_process';
 
 function getLogPath() {
   try { return path.join(app.getPath('userData'), 'app-debug.log'); }
-  catch (e) { return path.join(process.cwd(), 'app-debug.log'); }
+  catch (e) {
+    try { return path.join(app.getPath('temp'), 'clipboardpro-debug.log'); }
+    catch (err) { return path.join(app.getAppPath(), 'app-debug.log'); }
+  }
 }
 function log(msg) {
   try { fs.appendFileSync(getLogPath(), `${new Date().toISOString()} ${msg}\r\n`); } catch (e) {}
@@ -59,8 +62,7 @@ function getTrimMemoryExecutablePath() {
     path.join(process.resourcesPath, 'trim_memory.exe'),
     path.join(app.getAppPath(), 'resources', 'trim_memory.exe'),
     path.join(app.getAppPath(), '..', 'resources', 'trim_memory.exe'),
-    path.join(process.cwd(), 'resources', 'trim_memory.exe'),
-    'D:\\Program Files\\ClipBoardPro\\resources\\trim_memory.exe'
+    path.join(path.dirname(app.getPath('exe')), 'resources', 'trim_memory.exe')
   ];
   for (const candidate of candidates) {
     if (fs.existsSync(candidate)) {
@@ -121,7 +123,11 @@ function getConfigFilePath() {
   try {
     return path.join(app.getPath('userData'), 'app-config.json');
   } catch (e) {
-    return path.join(process.cwd(), 'app-config.json');
+    try {
+      return path.join(app.getPath('temp'), 'clipboardpro-config.json');
+    } catch (err) {
+      return path.join(app.getAppPath(), 'app-config.json');
+    }
   }
 }
 
@@ -253,11 +259,11 @@ function checkInternalCopyFlag() {
 }
 
 function findIndexHtml() {
+  const appPath = app.getAppPath();
   const possiblePaths = [
-    path.join(process.cwd(), 'dist-react', 'index.html'),
+    path.join(appPath, 'dist-react', 'index.html'),
     path.join(__dirname, '../dist-react/index.html'),
-    path.join(__dirname, '../../dist-react/index.html'),
-    path.resolve('./dist-react/index.html')
+    path.join(__dirname, '../../dist-react/index.html')
   ];
 
   for (const testPath of possiblePaths) {
@@ -297,16 +303,18 @@ function setAutoStart(enabled) {
 }
 
 function initializeAutoStart() {
+  if (!app.isPackaged) {
+    return;
+  }
   try {
     const loginItemSettings = app.getLoginItemSettings();
-    
-    if (!loginItemSettings.openAtLogin) {
+    if (openAtLogin && !loginItemSettings.openAtLogin) {
       setAutoStart(true);
-    } else {
-      openAtLogin = loginItemSettings.openAtLogin;
+    } else if (!openAtLogin && loginItemSettings.openAtLogin) {
+      setAutoStart(false);
     }
   } catch (error) {
-    setAutoStart(true);
+    log(`initializeAutoStart error: ${error.message}`);
   }
 }
 
@@ -624,7 +632,7 @@ function createWindow() {
     if (indexPath) {
       mainWindow.loadFile(indexPath);
     } else {
-      mainWindow.loadURL('file://' + path.join(process.cwd(), 'dist-react', 'index.html'));
+      mainWindow.loadFile(path.join(app.getAppPath(), 'dist-react', 'index.html'));
     }
   }
 
@@ -717,8 +725,19 @@ function createWindow() {
     return true;
   });
 
-  ipcMain.handle('open-external', async (_event, url) => {
-    await shell.openExternal(url);
+  ipcMain.handle('open-external', async (_event, rawUrl) => {
+    try {
+      if (rawUrl && typeof rawUrl === 'string') {
+        const parsed = new URL(rawUrl);
+        if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+          await shell.openExternal(rawUrl);
+          return true;
+        }
+      }
+    } catch (e) {
+      log(`open-external rejected url: ${rawUrl}`);
+    }
+    return false;
   });
 
   createTray();
@@ -838,11 +857,17 @@ ipcMain.handle('set-clipboard-image', (event, imageSource) => {
 // IPC handlers for media storage lifecycle (ADR-0002)
 ipcMain.handle('media:delete', async (event, filePath) => {
   try {
-    if (filePath && typeof filePath === 'string' && fs.existsSync(filePath)) {
-      await fs.promises.unlink(filePath);
-      return true;
+    if (filePath && typeof filePath === 'string') {
+      const resolvedTarget = path.resolve(filePath);
+      const resolvedMediaDir = path.resolve(mediaDir);
+      if (resolvedTarget.startsWith(resolvedMediaDir + path.sep) && fs.existsSync(resolvedTarget)) {
+        await fs.promises.unlink(resolvedTarget);
+        return true;
+      }
     }
-  } catch (e) {}
+  } catch (e) {
+    log(`media:delete error: ${e.message}`);
+  }
   return false;
 });
 

@@ -14,7 +14,8 @@ This document records non-obvious quirks, developer traps, and hard-won lessons 
 - **The Trap:** Launching `ClipBoardPro.exe` using PowerShell's `Start-Process` inside automated background task steps attaches the application to a Windows Job Object. When the script step finishes, Windows terminates all child processes inside the job object, causing the app to silently disappear after 3–5 seconds.
 - **The Fix:** Always start the binary via WMI (`Win32_Process::Create`):
   ```powershell
-  $cmd = '"D:\Program Files\ClipBoardPro\ClipBoardPro.exe"'
+  # Point to the installation executable (e.g., "$env:ProgramFiles\ClipBoardPro\ClipBoardPro.exe")
+  $cmd = '"{0}"' -f (Resolve-Path "$env:ProgramFiles\ClipBoardPro\ClipBoardPro.exe" -ErrorAction SilentlyContinue ?? "D:\Program Files\ClipBoardPro\ClipBoardPro.exe")
   Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{ CommandLine = $cmd }
   ```
   This detaches the process from the task runner and parents it directly under Windows Explorer/services.

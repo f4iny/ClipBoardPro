@@ -2,33 +2,16 @@ import React from 'react'
 import '../scss/Footer.scss'
 
 const Footer = () => {
-    const handleDonateClick = async () => {
+    const handleRepoClick = async () => {
+        const repoUrl = 'https://github.com/f4iny/ClipBoardPro';
         try {
             if (typeof window !== 'undefined' && window.electronAPI) {
-                console.log('Opening Ko-fi link via Electron shell...');
-                await window.electronAPI.openExternal('https://ko-fi.com/wenzdev');
+                await window.electronAPI.openExternal(repoUrl);
             } else {
-                console.log('Opening Ko-fi link via browser fallback...');
-                window.open('https://ko-fi.com/wenzdev', '_blank', 'noopener,noreferrer');
+                window.open(repoUrl, '_blank', 'noopener,noreferrer');
             }
         } catch (error) {
-            console.error('Error opening donation link:', error);
-            window.open('https://ko-fi.com/wenzdev', '_blank', 'noopener,noreferrer');
-        }
-    };
-
-    const handleWenzClick = async () => {
-        try {
-            if (typeof window !== 'undefined' && window.electronAPI) {
-                console.log('Opening WENZ website via Electron shell...');
-                await window.electronAPI.openExternal('https://wenz-taupe.vercel.app/');
-            } else {
-                console.log('Opening WENZ website via browser fallback...');
-                window.open('https://wenz-taupe.vercel.app/', '_blank', 'noopener,noreferrer');
-            }
-        } catch (error) {
-            console.error('Error opening WENZ website:', error);
-            window.open('https://wenz-taupe.vercel.app/', '_blank', 'noopener,noreferrer');
+            window.open(repoUrl, '_blank', 'noopener,noreferrer');
         }
     };
 
@@ -47,11 +30,11 @@ const Footer = () => {
                             <span> by </span>
                             <span 
                                 className="wenz-link" 
-                                onClick={handleWenzClick}
-                                title="Visit WENZ website"
+                                onClick={handleRepoClick}
+                                title="Visit GitHub repository"
                                 style={{ cursor: 'pointer' }}
                             >
-                                WENZ
+                                f4iny
                             </span>
                         </div>
                     </div>
@@ -59,15 +42,10 @@ const Footer = () => {
                     <div className="footer-right">
                         <button
                             className="donate-btn"
-                            onClick={handleDonateClick}
-                            title="Support the developer on Ko-fi"
+                            onClick={handleRepoClick}
+                            title="Visit repository on GitHub"
                         >
-                            <img
-                                src="./images/kofiLogo.png"
-                                alt="Ko-fi"
-                                className="kofi-icon"
-                            />
-                            <span className="donate-text">Donate</span>
+                            <span className="donate-text">GitHub</span>
                         </button>
                     </div>
                 </div>

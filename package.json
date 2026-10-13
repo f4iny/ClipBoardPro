@@ -4,13 +4,15 @@
   "version": "1.0.0",
   "description": "Advanced clipboard management tool for enhanced productivity",
   "author": {
-    "name": "WENZ GAME",
-    "email": "wenzgamedeveloper@gmail.com"
+    "name": "f4iny",
+    "email": "f4iny@email.com",
+    "url": "https://github.com/f4iny/ClipBoardPro"
   },
   "type": "module",
   "main": "src/electron/main.js",
   "homepage": "./",
   "scripts": {
+    "dev": "vite",
     "dev:react": "vite",
     "electron": "npm run build && electron .",
     "build": "node scripts/build-native.mjs && vite build",
@@ -21,6 +23,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@fontsource/inter": "^5.3.0",
+    "@fontsource/jetbrains-mono": "^5.3.0",
     "lucide-react": "^0.536.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
@@ -57,7 +61,7 @@
     },
     "win": {
       "target": "nsis",
-      "icon": "dist-react/images/ClipBoardPro_Logo.ico"
+      "icon": "public/images/ClipBoardPro_Logo.ico"
     },
     "nsis": {
       "oneClick": false,
@@ -67,11 +71,11 @@
     },
     "mac": {
       "target": "dmg",
-      "icon": "assets/ClipBoardPro_Logo.icns"
+      "icon": "public/images/ClipBoardPro_Logo.png"
     },
     "linux": {
       "target": "AppImage",
-      "icon": "assets/ClipBoardPro_Logo.png"
+      "icon": "public/images/ClipBoardPro_Logo.png"
     },
     "extraResources": [
       {
