@@ -146,7 +146,7 @@ const ClipboardItem = ({ item, index, onDelete, onCopy, onEdit, viewMode }) => {
       case 'image':
         return (
           <div className="image-preview">
-            <img src={item.content} alt="Clipboard content" loading="lazy" />
+            <img src={item.preview || item.content} alt="Clipboard content" loading="lazy" />
           </div>
         )
       case 'code':

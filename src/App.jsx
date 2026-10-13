@@ -215,10 +215,12 @@ function App() {
 
   // Content type detection
   const detectContentType = useCallback((content, type = null) => {
-    if (type === 'image') {
-      if (content.startsWith('data:image/') && content.length > 1000) {
-        return 'image'
-      }
+    if (type === 'image' || (typeof content === 'string' && content.endsWith('.png'))) {
+      return 'image'
+    }
+
+    if (content.startsWith('data:image/') && content.length > 1000) {
+      return 'image'
     }
     
     if (content.startsWith('data:image/') && content.includes('base64') && content.length > 1000) {
@@ -299,6 +301,13 @@ function App() {
       lastTypeRef.current = data.type
       isUpdatingRef.current = false
       
+      const dropped = prev.slice(49)
+      dropped.forEach(d => {
+        if (d && d.type === 'image' && d.content && window.electronAPI?.media?.delete) {
+          window.electronAPI.media.delete(d.content)
+        }
+      })
+
       return [newItem, ...prev.slice(0, 49)]
     })
   }, [detectContentType, generateId])
@@ -406,6 +415,12 @@ function App() {
           if (savedData.length > 0) {
             lastContentRef.current = savedData[0].content
             lastTypeRef.current = savedData[0].type
+          }
+          const activeImages = savedData
+            .filter(item => item.type === 'image' && item.content)
+            .map(item => item.content)
+          if (window.electronAPI?.media?.reconcile) {
+            window.electronAPI.media.reconcile(activeImages)
           }
         } catch (error) {
           setClipboardHistory([])
@@ -565,6 +580,9 @@ function App() {
 
   // Handlers
   const clearHistory = useCallback(() => {
+    if (window.electronAPI?.media?.clearAll) {
+      window.electronAPI.media.clearAll()
+    }
     setClipboardHistory([])
     localStorage.removeItem('clipboardHistory')
     lastContentRef.current = ''
@@ -573,7 +591,13 @@ function App() {
   }, [])
 
   const deleteItem = useCallback((id) => {
-    setClipboardHistory(prev => prev.filter(item => item.id !== id))
+    setClipboardHistory(prev => {
+      const toDel = prev.find(item => item.id === id)
+      if (toDel && toDel.type === 'image' && toDel.content && window.electronAPI?.media?.delete) {
+        window.electronAPI.media.delete(toDel.content)
+      }
+      return prev.filter(item => item.id !== id)
+    })
   }, [])
 
   // Simple copyToClipboard with global flag
@@ -688,6 +712,9 @@ function App() {
   }, [handleThemeChange, refreshThemes])
 
   const handleClearAllData = useCallback(() => {
+    if (window.electronAPI?.media?.clearAll) {
+      window.electronAPI.media.clearAll()
+    }
     setClipboardHistory([])
     localStorage.removeItem('clipboardHistory')
     lastContentRef.current = ''

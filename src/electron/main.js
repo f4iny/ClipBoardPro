@@ -1,11 +1,109 @@
-import { app, BrowserWindow, ipcMain, shell, Tray, Menu, nativeImage, clipboard, globalShortcut } from 'electron';
+import { app, BrowserWindow, ipcMain, shell, Tray, Menu, nativeImage, clipboard, globalShortcut, screen } from 'electron';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
+import { execFile } from 'child_process';
+
+function getLogPath() {
+  try { return path.join(app.getPath('userData'), 'app-debug.log'); }
+  catch (e) { return path.join(process.cwd(), 'app-debug.log'); }
+}
+function log(msg) {
+  try { fs.appendFileSync(getLogPath(), `${new Date().toISOString()} ${msg}\r\n`); } catch (e) {}
+}
+
+// --- Single Instance Lock ---
+const gotTheLock = app.requestSingleInstanceLock();
+log(`SINGLE_INSTANCE_LOCK: ${gotTheLock}, argv: ${process.argv.join(' ')}`);
+if (!gotTheLock) {
+  log('QUITTING: another instance holds the lock');
+  app.quit();
+}
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const iconPath = path.join(app.getAppPath(), 'dist-react', 'images', 'ClipBoardPro_Logo.ico')
+const iconPath = path.join(app.getAppPath(), 'dist-react', 'images', 'ClipBoardPro_Logo.ico');
+
+// Media storage management (ADR-0002)
+const mediaDir = path.join(app.getPath('userData'), 'media');
+try {
+  if (!fs.existsSync(mediaDir)) {
+    fs.mkdirSync(mediaDir, { recursive: true });
+  }
+} catch (e) {
+  log(`Failed to create media directory: ${e}`);
+}
+
+function saveImageToDisk(nativeImg) {
+  try {
+    if (!fs.existsSync(mediaDir)) {
+      fs.mkdirSync(mediaDir, { recursive: true });
+    }
+    const imageId = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+    const filePath = path.join(mediaDir, `${imageId}.png`);
+    fs.writeFileSync(filePath, nativeImg.toPNG());
+    return filePath;
+  } catch (err) {
+    log(`Failed to save image to disk: ${err}`);
+    return nativeImg.toDataURL();
+  }
+}
+
+
+// --- Working Set Trimming on Idle (ADR-0001 / DEC-001) ---
+let memoryTrimTimer = null;
+
+function getTrimMemoryExecutablePath() {
+  const candidates = [
+    path.join(process.resourcesPath, 'trim_memory.exe'),
+    path.join(app.getAppPath(), 'resources', 'trim_memory.exe'),
+    path.join(app.getAppPath(), '..', 'resources', 'trim_memory.exe'),
+    path.join(process.cwd(), 'resources', 'trim_memory.exe'),
+    'D:\\Program Files\\ClipBoardPro\\resources\\trim_memory.exe'
+  ];
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
+function trimMemory() {
+  try {
+    const exePath = getTrimMemoryExecutablePath();
+    if (!exePath) {
+      log('trimMemory: trim_memory.exe not found');
+      return;
+    }
+    execFile(exePath, [], { windowsHide: true }, (error) => {
+      if (error) {
+        log(`trimMemory error: ${error.message}`);
+      } else {
+        log('trimMemory: EmptyWorkingSet executed successfully');
+      }
+    });
+  } catch (err) {
+    log(`trimMemory exception: ${err.message}`);
+  }
+}
+
+function scheduleMemoryTrim(delayMs = 2000) {
+  cancelMemoryTrim();
+  memoryTrimTimer = setTimeout(() => {
+    memoryTrimTimer = null;
+    log('scheduleMemoryTrim: 2000ms idle elapsed, trimming working set');
+    trimMemory();
+  }, delayMs);
+}
+
+function cancelMemoryTrim() {
+  if (memoryTrimTimer) {
+    clearTimeout(memoryTrimTimer);
+    memoryTrimTimer = null;
+    log('cancelMemoryTrim: cancelled memory trim timer');
+  }
+}
 
 let mainWindow;
 let tray = null;
@@ -18,22 +116,63 @@ let hotkeys = {
   clearAll: 'Ctrl+Shift+Delete'
 };
 
+function getConfigFilePath() {
+  try {
+    return path.join(app.getPath('userData'), 'app-config.json');
+  } catch (e) {
+    return path.join(process.cwd(), 'app-config.json');
+  }
+}
+
+function loadConfig() {
+  try {
+    const cp = getConfigFilePath();
+    if (fs.existsSync(cp)) {
+      const data = JSON.parse(fs.readFileSync(cp, 'utf8'));
+      if (typeof data.startMinimized === 'boolean') startMinimized = data.startMinimized;
+      if (typeof data.closeBehavior === 'string') closeBehavior = data.closeBehavior;
+      if (typeof data.openAtLogin === 'boolean') openAtLogin = data.openAtLogin;
+      if (data.hotkeys) hotkeys = { ...hotkeys, ...data.hotkeys };
+    }
+  } catch (error) {
+    console.error('Failed to load config:', error);
+  }
+}
+
+function saveConfig() {
+  try {
+    const cp = getConfigFilePath();
+    const data = {
+      startMinimized,
+      closeBehavior,
+      openAtLogin,
+      hotkeys
+    };
+    fs.writeFileSync(cp, JSON.stringify(data, null, 2), 'utf8');
+  } catch (error) {
+    console.error('Failed to save config:', error);
+  }
+}
+
 // เพิ่มตัวแปรสำหรับ clipboard monitoring
 let clipboardMonitorInterval;
 let lastClipboardText = '';
 let lastClipboardImage = '';
+let lastImageSize = null;
 let isMonitoringActive = false;
+let isInternalCopy = false;
+let internalCopyTimeout = null;
 
-// ฟังก์ชันตรวจสอบ global flag จาก renderer process
-async function checkInternalCopyFlag() {
-  if (!mainWindow || mainWindow.isDestroyed()) return false;
-  
-  try {
-    const result = await mainWindow.webContents.executeJavaScript('window.isInternalCopyOperation || false');
-    return result;
-  } catch (error) {
-    return false;
-  }
+function markInternalCopy() {
+  isInternalCopy = true;
+  if (internalCopyTimeout) clearTimeout(internalCopyTimeout);
+  internalCopyTimeout = setTimeout(() => {
+    isInternalCopy = false;
+  }, 1200);
+}
+
+function checkInternalCopyFlag() {
+  return isInternalCopy;
 }
 
 function findIndexHtml() {
@@ -56,13 +195,22 @@ function findIndexHtml() {
 function setAutoStart(enabled) {
   try {
     openAtLogin = enabled;
+    saveConfig();
+    
+    const args = [];
+    if (enabled) {
+      args.push('--autostart');
+      if (startMinimized) {
+        args.push('--hidden');
+      }
+    }
     
     app.setLoginItemSettings({
       openAtLogin: enabled,
       openAsHidden: enabled && startMinimized,
       name: 'ClipBoard Pro',
       path: process.execPath,
-      args: enabled && startMinimized ? ['--hidden'] : []
+      args: args
     });
     
     return true;
@@ -100,17 +248,13 @@ function getAutoStartStatus() {
 }
 
 function handleCommandLineArgs() {
+  loadConfig();
   const args = process.argv;
   
   if (args.includes('--hidden')) {
     startMinimized = true;
-  }
-  
-  const loginItemSettings = getAutoStartStatus();
-  if (loginItemSettings.wasOpenedAtLogin) {
-    if (loginItemSettings.wasOpenedAsHidden) {
-      startMinimized = true;
-    }
+  } else if (args.includes('--autostart')) {
+    // If started automatically, respect startMinimized from loaded config
   }
 }
 
@@ -127,17 +271,12 @@ function startClipboardMonitoring() {
     // Silent error handling
   }
   
-  clipboardMonitorInterval = setInterval(async () => {
+  clipboardMonitorInterval = setInterval(() => {
     if (!isMonitoringActive) return;
-    
-    // ตรวจสอบ global flag ก่อนประมวลผล
-    const isInternalCopy = await checkInternalCopyFlag();
-    if (isInternalCopy) {
-      return;
-    }
+    if (isInternalCopy) return;
     
     try {
-      // ตรวจสอบ text
+      // 1. ตรวจสอบ text
       const currentText = clipboard.readText();
       if (currentText && 
           currentText !== lastClipboardText && 
@@ -148,49 +287,53 @@ function startClipboardMonitoring() {
         lastClipboardText = currentText;
         
         if (mainWindow && !mainWindow.isDestroyed()) {
-          // ตรวจสอบ flag อีกครั้งก่อนส่ง
-          const stillInternalCopy = await checkInternalCopyFlag();
-          if (!stillInternalCopy) {
-            setTimeout(async () => {
-              const finalCheck = await checkInternalCopyFlag();
-              if (mainWindow && !mainWindow.isDestroyed() && !finalCheck) {
-                mainWindow.webContents.send('clipboard-changed', {
-                  type: 'text',
-                  content: currentText,
-                  timestamp: new Date().toISOString()
-                });
-              }
-            }, 200);
-          }
+          mainWindow.webContents.send('clipboard-changed', {
+            type: 'text',
+            content: currentText,
+            timestamp: new Date().toISOString()
+          });
         }
       }
 
-      // ตรวจสอบ image
-      const currentImage = clipboard.readImage();
-      if (!currentImage.isEmpty()) {
-        const imageDataURL = currentImage.toDataURL();
-        if (imageDataURL && 
-            imageDataURL !== lastClipboardImage && 
-            imageDataURL !== '' &&
-            imageDataURL.length > 100 &&
-            imageDataURL.length < 50000000) {
-          
-          lastClipboardImage = imageDataURL;
-          
-          if (mainWindow && !mainWindow.isDestroyed()) {
-            // ตรวจสอบ flag อีกครั้งก่อนส่ง
-            const stillInternalCopy = await checkInternalCopyFlag();
-            if (!stillInternalCopy) {
-              setTimeout(async () => {
-                const finalCheck = await checkInternalCopyFlag();
-                if (mainWindow && !mainWindow.isDestroyed() && !finalCheck) {
-                  mainWindow.webContents.send('clipboard-changed', {
-                    type: 'image',
-                    content: imageDataURL,
-                    timestamp: new Date().toISOString()
-                  });
+      // 2. ตรวจสอบ image (เร็ว: сначала проверяем форматы)
+      const formats = clipboard.availableFormats();
+      const hasImageFormat = formats.some(f => f.includes('image') || f === 'CF_DIB' || f === 'CF_BITMAP');
+      if (hasImageFormat) {
+        const currentImage = clipboard.readImage();
+        if (!currentImage.isEmpty()) {
+          const imgSize = currentImage.getSize();
+          const sameAsLast = lastImageSize && 
+                             lastImageSize.width === imgSize.width && 
+                             lastImageSize.height === imgSize.height && 
+                             lastClipboardImage !== '';
+          if (!sameAsLast) {
+            const imageDataURL = currentImage.toDataURL();
+            if (imageDataURL && 
+                imageDataURL !== lastClipboardImage && 
+                imageDataURL !== '' &&
+                imageDataURL.length > 100 &&
+                imageDataURL.length < 50000000) {
+              
+              lastClipboardImage = imageDataURL;
+              lastImageSize = imgSize;
+              
+              let thumbnailDataURL = imageDataURL;
+              try {
+                if (imgSize.height > 140) {
+                  const targetWidth = Math.max(1, Math.round(imgSize.width * (140 / imgSize.height)));
+                  thumbnailDataURL = currentImage.resize({ width: targetWidth, height: 140, quality: 'better' }).toDataURL();
                 }
-              }, 300);
+              } catch (e) {}
+              
+              const filePath = saveImageToDisk(currentImage);
+              if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.webContents.send('clipboard-changed', {
+                  type: 'image',
+                  content: filePath,
+                  thumbnail: thumbnailDataURL,
+                  timestamp: new Date().toISOString()
+                });
+              }
             }
           }
         }
@@ -261,8 +404,7 @@ function showWindowAtCursor() {
   if (!mainWindow) return;
   
   try {
-    const { screen } = require('electron');
-    const cursor = screen.getCursorScreenPoint();
+        const cursor = screen.getCursorScreenPoint();
     const display = screen.getDisplayNearestPoint(cursor);
     
     const windowBounds = mainWindow.getBounds();
@@ -289,28 +431,43 @@ function showWindowAtCursor() {
 
 async function checkClipboardForScreenshot() {
   if (!isMonitoringActive) return;
-  
-  const isInternalCopy = await checkInternalCopyFlag();
   if (isInternalCopy) return;
   
   try {
+    const formats = clipboard.availableFormats();
+    const hasImageFormat = formats.some(f => f.includes('image') || f === 'CF_DIB' || f === 'CF_BITMAP');
+    if (!hasImageFormat) return;
+
     const image = clipboard.readImage();
     if (!image.isEmpty()) {
-      const imageDataURL = image.toDataURL();
-      if (imageDataURL !== lastClipboardImage && imageDataURL.length > 100) {
-        lastClipboardImage = imageDataURL;
-        
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          setTimeout(async () => {
-            const finalCheck = await checkInternalCopyFlag();
-            if (mainWindow && !mainWindow.isDestroyed() && !finalCheck) {
-              mainWindow.webContents.send('clipboard-changed', {
-                type: 'image',
-                content: imageDataURL,
-                timestamp: new Date().toISOString()
-              });
+      const imgSize = image.getSize();
+      const sameAsLast = lastImageSize && 
+                         lastImageSize.width === imgSize.width && 
+                         lastImageSize.height === imgSize.height && 
+                         lastClipboardImage !== '';
+      if (!sameAsLast) {
+        const imageDataURL = image.toDataURL();
+        if (imageDataURL && imageDataURL !== lastClipboardImage && imageDataURL.length > 100) {
+          lastClipboardImage = imageDataURL;
+          lastImageSize = imgSize;
+          
+          let thumbnailDataURL = imageDataURL;
+          try {
+            if (imgSize.height > 140) {
+              const targetWidth = Math.max(1, Math.round(imgSize.width * (140 / imgSize.height)));
+              thumbnailDataURL = image.resize({ width: targetWidth, height: 140, quality: 'better' }).toDataURL();
             }
-          }, 200);
+          } catch (e) {}
+          
+          const filePath = saveImageToDisk(image);
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('clipboard-changed', {
+              type: 'image',
+              content: filePath,
+              thumbnail: thumbnailDataURL,
+              timestamp: new Date().toISOString()
+            });
+          }
         }
       }
     }
@@ -320,62 +477,73 @@ async function checkClipboardForScreenshot() {
 }
 
 function createTray() {
-  const trayIconPath = path.join(app.getAppPath(), 'dist-react', 'images', 'ClipBoardPro_Logo.png')
-  const icon = nativeImage.createFromPath(trayIconPath).resize({ width: 16, height: 16 })
+  if (tray) {
+    try { tray.destroy(); } catch (e) {}
+    tray = null;
+  }
   
-  tray = new Tray(icon);
-  tray.setToolTip('ClipBoard Pro')
+  const trayIconPath = path.join(app.getAppPath(), 'dist-react', 'images', 'ClipBoardPro_Logo.png');
+  const icon = nativeImage.createFromPath(trayIconPath).resize({ width: 16, height: 16 });
   
-  const contextMenu = Menu.buildFromTemplate([
-    {
-      label: 'ClipBoard Pro',
-      type: 'normal',
-      enabled: false
-    },
-    {
-      type: 'separator'
-    },
-    {
-      label: 'Show Window',
-      type: 'normal',
-      click: showWindow
-    },
-    {
-      label: 'Hide Window',
-      type: 'normal',
-      click: hideWindow
-    },
-    {
-      type: 'separator'
-    },
-    {
-      label: 'Quit',
-      type: 'normal',
-      click: quitApp
-    }
-  ]);
-  
-  tray.setToolTip('ClipBoard Pro - Clipboard Manager');
-  tray.setContextMenu(contextMenu);
-  
-  tray.on('double-click', () => {
-    if (mainWindow.isVisible()) {
-      hideWindow();
-    } else {
-      showWindow();
-    }
-  });
-  
-  tray.on('click', () => {
-    if (mainWindow.isVisible()) {
-      hideWindow();
-    } else {
-      showWindow();
-    }
-  });
+  try {
+    tray = new Tray(icon);
+    tray.setToolTip('ClipBoard Pro - Clipboard Manager');
+    
+    const contextMenu = Menu.buildFromTemplate([
+      {
+        label: 'ClipBoard Pro',
+        type: 'normal',
+        enabled: false
+      },
+      {
+        type: 'separator'
+      },
+      {
+        label: 'Show Window',
+        type: 'normal',
+        click: showWindow
+      },
+      {
+        label: 'Hide Window',
+        type: 'normal',
+        click: hideWindow
+      },
+      {
+        type: 'separator'
+      },
+      {
+        label: 'Quit',
+        type: 'normal',
+        click: quitApp
+      }
+    ]);
+    
+    tray.setContextMenu(contextMenu);
+    
+    tray.on('double-click', () => {
+      if (mainWindow && mainWindow.isVisible()) {
+        hideWindow();
+      } else {
+        showWindow();
+      }
+    });
+    
+    tray.on('click', () => {
+      if (mainWindow && mainWindow.isVisible()) {
+        hideWindow();
+      } else {
+        showWindow();
+      }
+    });
+  } catch (err) {
+    console.error('Failed to create tray:', err);
+  }
 }
 
 function showWindow() {
+  if (!tray) {
+    createTray();
+  }
   if (mainWindow) {
     if (mainWindow.isMinimized()) {
       mainWindow.restore();
@@ -386,6 +554,9 @@ function showWindow() {
 }
 
 function hideWindow() {
+  if (!tray) {
+    createTray();
+  }
   if (mainWindow) {
     mainWindow.hide();
   }
@@ -393,6 +564,7 @@ function hideWindow() {
 
 function quitApp() {
   isQuitting = true;
+  cancelMemoryTrim();
   stopClipboardMonitoring();
   globalShortcut.unregisterAll();
   if (tray) {
@@ -418,7 +590,7 @@ function createWindow() {
       contextIsolation: true,
       enableRemoteModule: false,
       preload: path.join(__dirname, 'preload.js'),
-      backgroundThrottling: false,
+      backgroundThrottling: true,
       offscreen: false
     },
     show: !startMinimized,
@@ -442,6 +614,8 @@ function createWindow() {
   mainWindow.once('ready-to-show', () => {
     if (!startMinimized) {
       mainWindow.show();
+    } else {
+      scheduleMemoryTrim(3000);
     }
     
     setTimeout(() => {
@@ -462,10 +636,11 @@ function createWindow() {
   });
 
   mainWindow.on('hide', () => {
-    // ไม่หยุด monitoring
+    scheduleMemoryTrim(2000);
   });
 
   mainWindow.on('show', () => {
+    cancelMemoryTrim();
     if (!isMonitoringActive) {
       startClipboardMonitoring();
     }
@@ -508,6 +683,11 @@ function createWindow() {
     mainWindow.webContents.send('window-maximized', false);
   });
 
+  ipcMain.handle('trim-memory', () => {
+    trimMemory();
+    return true;
+  });
+
   ipcMain.handle('open-external', async (_event, url) => {
     await shell.openExternal(url);
   });
@@ -519,6 +699,14 @@ app.whenReady().then(() => {
   initializeAutoStart();
   createWindow();
 
+  app.on('second-instance', () => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.show();
+      mainWindow.focus();
+    }
+  });
+
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow();
@@ -526,24 +714,36 @@ app.whenReady().then(() => {
       showWindow();
     }
   });
+
 });
 
 app.on('window-all-closed', (event) => {
   event.preventDefault();
 });
 
-app.on('before-quit', () => {
+app.on('before-quit', (e) => {
+  log(`app before-quit event (isQuitting: ${isQuitting})`);
   isQuitting = true;
+  cancelMemoryTrim();
   stopClipboardMonitoring();
   globalShortcut.unregisterAll();
 });
 
 app.on('will-quit', () => {
+  log('app will-quit event');
   stopClipboardMonitoring();
   globalShortcut.unregisterAll();
   if (tray) {
     tray.destroy();
   }
+});
+
+process.on('uncaughtException', (err) => {
+  log(`UNCAUGHT_EXCEPTION: ${err ? err.stack || err : 'unknown'}`);
+});
+
+process.on('unhandledRejection', (err) => {
+  log(`UNHANDLED_REJECTION: ${err ? err.stack || err : 'unknown'}`);
 });
 
 // IPC handlers สำหรับ clipboard
@@ -577,6 +777,8 @@ ipcMain.handle('get-clipboard-image', () => {
 // ปรับปรุง IPC handlers สำหรับ set clipboard - ไม่ต้องใช้ internal flags แล้ว
 ipcMain.handle('set-clipboard-text', (event, text) => {
   try {
+    markInternalCopy();
+    lastClipboardText = text;
     clipboard.writeText(text);
     return true;
   } catch (error) {
@@ -584,9 +786,19 @@ ipcMain.handle('set-clipboard-text', (event, text) => {
   }
 });
 
-ipcMain.handle('set-clipboard-image', (event, imageDataURL) => {
+ipcMain.handle('set-clipboard-image', (event, imageSource) => {
   try {
-    const image = nativeImage.createFromDataURL(imageDataURL);
+    markInternalCopy();
+    lastClipboardImage = imageSource;
+    let image;
+    if (typeof imageSource === 'string' && (imageSource.startsWith('data:image/') || imageSource.includes('base64'))) {
+      image = nativeImage.createFromDataURL(imageSource);
+    } else if (typeof imageSource === 'string' && fs.existsSync(imageSource)) {
+      image = nativeImage.createFromPath(imageSource);
+    } else {
+      image = nativeImage.createFromDataURL(imageSource);
+    }
+    lastImageSize = image.getSize();
     clipboard.writeImage(image);
     return true;
   } catch (error) {
@@ -594,9 +806,55 @@ ipcMain.handle('set-clipboard-image', (event, imageDataURL) => {
   }
 });
 
+// IPC handlers for media storage lifecycle (ADR-0002)
+ipcMain.handle('media:delete', async (event, filePath) => {
+  try {
+    if (filePath && typeof filePath === 'string' && fs.existsSync(filePath)) {
+      await fs.promises.unlink(filePath);
+      return true;
+    }
+  } catch (e) {}
+  return false;
+});
+
+ipcMain.handle('media:clear-all', async () => {
+  try {
+    if (fs.existsSync(mediaDir)) {
+      const files = await fs.promises.readdir(mediaDir);
+      for (const f of files) {
+        if (f.endsWith('.png')) {
+          await fs.promises.unlink(path.join(mediaDir, f)).catch(() => {});
+        }
+      }
+    }
+    return true;
+  } catch (e) {}
+  return false;
+});
+
+ipcMain.handle('media:reconcile', async (event, activeFilePaths) => {
+  try {
+    if (fs.existsSync(mediaDir) && Array.isArray(activeFilePaths)) {
+      const activeSet = new Set(activeFilePaths.map(p => path.normalize(p).toLowerCase()));
+      const files = await fs.promises.readdir(mediaDir);
+      for (const f of files) {
+        if (f.endsWith('.png')) {
+          const full = path.normalize(path.join(mediaDir, f)).toLowerCase();
+          if (!activeSet.has(full)) {
+            await fs.promises.unlink(path.join(mediaDir, f)).catch(() => {});
+          }
+        }
+      }
+    }
+    return true;
+  } catch (e) {}
+  return false;
+});
+
 // IPC handler สำหรับ close behavior setting
 ipcMain.handle('set-close-behavior', (event, behavior) => {
   closeBehavior = behavior;
+  saveConfig();
   return true;
 });
 
@@ -607,6 +865,7 @@ ipcMain.handle('get-close-behavior', () => {
 // IPC handlers สำหรับ start minimized setting
 ipcMain.handle('set-start-minimized', (event, minimized) => {
   startMinimized = minimized;
+  saveConfig();
   
   if (openAtLogin) {
     setAutoStart(true);

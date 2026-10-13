@@ -1,4 +1,7 @@
 .clipboard-history {
+  transform: translateZ(0);
+  will-change: scroll-position;
+
   .items-container {
     padding: var(--spacing-md) 0;
 

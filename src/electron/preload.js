@@ -39,6 +39,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   hideWindow: () => ipcRenderer.invoke('hide-window'),
   quitApp: () => ipcRenderer.invoke('quit-app'),
 
+  // Media lifecycle APIs
+  media: {
+    delete: (filePath) => ipcRenderer.invoke('media:delete', filePath),
+    clearAll: () => ipcRenderer.invoke('media:clear-all'),
+    reconcile: (activeFilePaths) => ipcRenderer.invoke('media:reconcile', activeFilePaths)
+  },
+
   // Native Clipboard APIs
   clipboard: {
     startMonitoring: () => ipcRenderer.invoke('start-clipboard-monitoring'),
@@ -72,7 +79,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Listen to window state changes
   onWindowMaximized: (callback) => {
-    removeAllListeners();
     const handler = (event, isMaximized) => callback(isMaximized);
     ipcRenderer.on('window-maximized', handler);
     return () => {
