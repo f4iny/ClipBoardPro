@@ -112,20 +112,45 @@ npm run test:watch
 npm run lint
 ```
 
-### Production Build
+### Building Executable Files (Packaging & Distribution)
 
+You can build and package your own standalone executable files or setup installers directly from source.
+
+#### Step 1: Compile Native Helper and Frontend
 ```bash
-# Compile native memory helper and bundle React frontend
 npm run build
-
-# Package Windows installer (.exe via NSIS)
-npm run dist:win
-
-# Package for current platform
-npm run dist
 ```
+This compiles the native C# working set memory trimmer (`resources/TrimMemory.cs` → `resources/trim_memory.exe`) using the built-in Windows .NET compiler and bundles the React application into `dist-react/`.
 
-Installers and executables are output to the `release/` directory.
+#### Step 2: Package the Application
+
+Choose your desired packaging format:
+
+- **Windows NSIS Installer (`.exe`):**
+  ```bash
+  npm run dist:win
+  ```
+  Creates a full Windows setup wizard (`release/ClipBoardPro Setup 1.0.0.exe`) with options to customize installation location and create desktop/start-menu shortcuts.
+
+- **Standalone Unpacked Directory (Portable `.exe`):**
+  ```bash
+  npm run dist:dir
+  ```
+  Generates an unpacked folder (`release/win-unpacked/ClipBoardPro.exe`) that can be launched immediately without running an installer or zipped for portable distribution.
+
+- **Linux AppImage:**
+  ```bash
+  npm run dist:linux
+  ```
+
+- **Current Host Platform:**
+  ```bash
+  npm run dist
+  ```
+
+> [!NOTE]
+> All compiled binaries, installers, and packaged bundles are saved in the `release/` folder.
+
 
 ---
 
