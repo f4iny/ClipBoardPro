@@ -57,3 +57,10 @@ This document records non-obvious quirks, developer traps, and hard-won lessons 
 ### 6. Mixing ES Modules with CommonJS in Electron
 - **The Trap:** `main.js` is declared as an ES Module (`"type": "module"` in `package.json`). Calling CommonJS `const { screen } = require('electron')` inside an ESM file throws a runtime ReferenceError.
 - **The Fix:** Always import Electron modules at the top level: `import { app, BrowserWindow, screen, ... } from 'electron';`.
+
+---
+
+### 7. Electron-Builder `winCodeSign` Symlink Privilege Error on Windows
+- **The Trap:** When running `electron-builder` on Windows without Developer Mode or elevated privileges, 7-Zip fails to unpack `winCodeSign-2.6.0.7z` with `ERROR: Cannot create symbolic link : A required privilege is not held by the client` due to unused macOS (`darwin/.../*.dylib`) symlinks inside the archive.
+- **The Fix:** The Windows binaries (`rcedit-x64.exe`, `windows-10/`, `windows-6/`) in `%LOCALAPPDATA%\electron-builder\Cache\winCodeSign` extract properly. Ensuring the directory is named `winCodeSign-2.6.0` inside the cache prevents `electron-builder` from attempting repeated failed extractions.
+
