@@ -16,6 +16,11 @@ This file tracks all identified bugs, their root causes, and their verified fixe
 | **BUG-010** | High GPU Load (~47%) During Scrolling from Backdrop Shaders | High | **RESOLVED** | Shader purge, 120 FPS cap & CSS variable refactor |
 | **BUG-011** | Secondary Instance Lock Exit Bypass (Async `app.quit()` Continuation) | Critical | **RESOLVED** | Synchronous `process.exit(0)` on lock failure |
 | **BUG-012** | Consecutive Matching-Resolution Screenshots Discarded & V8 Heap Bloat | Critical | **RESOLVED** | `test/electron/image_deduplication.test.js` & Bitmap MD5 Hashing |
+| **BUG-013** | Global Listener Destruction via `TitleBar` Unmount (`removeAllListeners`) | High | **RESOLVED** | Scoped `cleanup()` unbind and removal of global purge |
+| **BUG-014** | Multi-tier Internal Copy Timeout Race & 5-Second System Clipboard Blindness | High | **RESOLVED** | Content-based deduplication without blind lockout timers |
+| **BUG-015** | Fatal Duplicate IPC Handler Crash on Secondary Window Creation | High | **RESOLVED** | Top-level module `registerWindowIpcHandlers()` registration |
+| **BUG-016** | Missing Electron Navigation Sandbox Guards & Window Open Interception | High | **RESOLVED** | `sandbox: true`, `setWindowOpenHandler`, `will-navigate` |
+| **BUG-017** | Unused `lucide-react` Dependency Inflation (3 690 Extraneous Files) | High | **RESOLVED** | Package uninstalled via `pnpm remove lucide-react` |
 
 ---
 
@@ -94,5 +99,31 @@ This file tracks all identified bugs, their root causes, and their verified fixe
   - Replaced dimension check and 50 MB Base64 string retention with fast bitmap MD5 hashing (`crypto.createHash('md5').update(currentImage.toBitmap()).digest('hex')`).
   - Unified screenshot and clipboard image handling into a single deduplicated `processClipboardImage` function.
   - Verified with `test/electron/image_deduplication.test.js`.
+
+#### BUG-013: Global Listener Destruction via `TitleBar` Unmount (`removeAllListeners`)
+- **Symptoms:** Re-rendering or unmounting `TitleBar` (e.g. in React 18 StrictMode or theme toggling) permanently killed clipboard event ingestion in `App.jsx`.
+- **Root Cause:** `TitleBar.jsx` invoked `window.electronAPI.removeAllListeners()`, which internally called `ipcRenderer.removeAllListeners('clipboard-changed')`.
+- **Resolution:** Removed the call from `TitleBar.jsx` (relying on scoped `cleanup()`) and removed `removeAllListeners` from `preload.js`.
+
+#### BUG-014: Multi-tier Internal Copy Timeout Race & 5-Second System Clipboard Blindness
+- **Symptoms:** Copying an item from ClipBoardPro blocked capturing any external clipboard updates for 5 seconds.
+- **Root Cause:** Three uncoordinated layers (`ClipboardItem.jsx` 3s timer, `App.jsx` 5s global flag, `main.js` 1.2s timeout) locked out incoming events.
+- **Resolution:** Replaced blind time-based lockouts with synchronous content recording in `main.js` (`lastClipboardText`, `lastClipboardImageHash`), eliminating all React timeouts and `stopMonitoring` invocations. Verified with `test/electron/security_and_handlers.test.js`.
+
+#### BUG-015: Fatal Duplicate IPC Handler Crash on Secondary Window Creation
+- **Symptoms:** Calling `createWindow()` a second time (e.g. on macOS `activate` or crash recovery) threw `Error: Attempted to register a second handler for 'window-minimize'` and crashed Electron.
+- **Root Cause:** `ipcMain.handle` registrations were declared inside the body of `createWindow()`.
+- **Resolution:** Extracted all window control IPC handlers to `registerWindowIpcHandlers()`, executed once on `app.whenReady()`.
+
+#### BUG-016: Missing Electron Navigation Sandbox Guards & Window Open Interception
+- **Symptoms:** Unconstrained child windows could be opened via `window.open` or links with `target="_blank"`, and main window lacked OS sandbox isolation.
+- **Root Cause:** Missing `sandbox: true`, `setWindowOpenHandler`, and `will-navigate` event interceptors in `main.js`.
+- **Resolution:** Configured `sandbox: true`, forced `setWindowOpenHandler` to delegate `http/https` to `shell.openExternal` and return `{ action: 'deny' }`, and intercepted `will-navigate`. Verified with `test/electron/security_and_handlers.test.js`.
+
+#### BUG-017: Unused `lucide-react` Dependency Inflation (3 690 Extraneous Files)
+- **Symptoms:** 3 690 icon files packaged into `app.asar`, causing build bloat and slow asar packaging (GOTCHAS.md).
+- **Root Cause:** `lucide-react` was listed in `package.json` dependencies despite having 0 imports in `src/`.
+- **Resolution:** Removed package via `pnpm remove lucide-react`.
+
 
 

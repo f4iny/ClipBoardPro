@@ -268,7 +268,7 @@ function markInternalCopy() {
   if (internalCopyTimeout) clearTimeout(internalCopyTimeout);
   internalCopyTimeout = setTimeout(() => {
     isInternalCopy = false;
-  }, 1200);
+  }, 200);
 }
 
 function findIndexHtml() {
@@ -596,6 +596,7 @@ function createWindow() {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
+      sandbox: true,
       enableRemoteModule: false,
       preload: path.join(__dirname, 'preload.js'),
       backgroundThrottling: true,
@@ -605,6 +606,31 @@ function createWindow() {
     backgroundColor: '#0a0a0a',
     transparent: false,
     hasShadow: true
+  });
+
+  // Electron Security: Intercept window.open / <a target="_blank">
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    try {
+      const parsed = new URL(url);
+      if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+        shell.openExternal(url);
+      }
+    } catch {}
+    return { action: 'deny' };
+  });
+
+  // Electron Security: Prevent navigation away from the app
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    const currentURL = mainWindow.webContents.getURL();
+    if (currentURL && url !== currentURL) {
+      event.preventDefault();
+      try {
+        const parsed = new URL(url);
+        if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+          shell.openExternal(url);
+        }
+      } catch {}
+    }
   });
 
   if (process.env.NODE_ENV === 'development') {
@@ -666,13 +692,30 @@ function createWindow() {
     }
   }
 
-  // Window controls
+  mainWindow.on('maximize', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('window-maximized', true);
+    }
+  });
+
+  mainWindow.on('unmaximize', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('window-maximized', false);
+    }
+  });
+
+  if (!tray) {
+    createTray();
+  }
+}
+
+function registerWindowIpcHandlers() {
   ipcMain.handle('window-minimize', () => {
-    if (mainWindow) mainWindow.minimize();
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.minimize();
   });
 
   ipcMain.handle('window-maximize', () => {
-    if (mainWindow) {
+    if (mainWindow && !mainWindow.isDestroyed()) {
       if (mainWindow.isMaximized()) {
         mainWindow.unmaximize();
       } else {
@@ -682,7 +725,7 @@ function createWindow() {
   });
 
   ipcMain.handle('window-close', () => {
-    if (mainWindow) {
+    if (mainWindow && !mainWindow.isDestroyed()) {
       if (closeBehavior === 'minimize') {
         hideWindow();
       } else {
@@ -692,15 +735,7 @@ function createWindow() {
   });
 
   ipcMain.handle('window-is-maximized', () => {
-    return mainWindow ? mainWindow.isMaximized() : false;
-  });
-
-  mainWindow.on('maximize', () => {
-    mainWindow.webContents.send('window-maximized', true);
-  });
-
-  mainWindow.on('unmaximize', () => {
-    mainWindow.webContents.send('window-maximized', false);
+    return mainWindow && !mainWindow.isDestroyed() ? mainWindow.isMaximized() : false;
   });
 
   ipcMain.handle('trim-memory', () => {
@@ -722,12 +757,11 @@ function createWindow() {
     }
     return false;
   });
-
-  createTray();
 }
 
 app.whenReady().then(() => {
   initializeAutoStart();
+  registerWindowIpcHandlers();
   createWindow();
 
   app.on('second-instance', () => {

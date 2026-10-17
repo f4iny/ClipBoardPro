@@ -27,9 +27,6 @@ const TitleBar = () => {
         if (cleanup && typeof cleanup === 'function') {
           cleanup()
         }
-        if (window.electronAPI && window.electronAPI.removeAllListeners) {
-          window.electronAPI.removeAllListeners()
-        }
       }
     }
   }, [])

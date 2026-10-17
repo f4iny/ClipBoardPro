@@ -153,13 +153,17 @@ class ThemeManager {
       
       // Remove loading class after transition
       setTimeout(() => {
-        document.body.classList.remove('theme-loading')
+        if (typeof document !== 'undefined' && document.body) {
+          document.body.classList.remove('theme-loading')
+        }
         this.isTransitioning = false
         
         // Dispatch theme change event
-        window.dispatchEvent(new CustomEvent('themeChanged', { 
-          detail: { theme: themeName } 
-        }))
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('themeChanged', { 
+            detail: { theme: themeName } 
+          }))
+        }
         
         console.log(`✅ Theme "${themeName}" applied successfully`)
       }, 150)

@@ -32,42 +32,14 @@ const ClipboardItem = ({ item, index, onDelete, onCopy, onEdit, viewMode }) => {
     }
   }
 
-  // ปรับปรุง handleCopy ให้หยุด clipboard monitoring ชั่วคราว (ใช้จากเวอร์ชัน 2)
   const handleCopy = async () => {
     try {
-      console.log('📄 Starting copy operation from UI')
-      
-      // หยุด clipboard monitoring ชั่วคราว
-      if (window.electronAPI && window.electronAPI.clipboard && window.electronAPI.clipboard.stopMonitoring) {
-        await window.electronAPI.clipboard.stopMonitoring()
-      }
-      
-      // ทำการ copy
       await onCopy(item.content, item.type)
       setCopied(true)
-      
-      console.log('✅ Copy operation completed')
-      
-      // รอ 3 วินาทีแล้วเริ่ม monitoring อีกครั้ง
-      setTimeout(async () => {
-        if (window.electronAPI && window.electronAPI.clipboard && window.electronAPI.clipboard.startMonitoring) {
-          await window.electronAPI.clipboard.startMonitoring()
-        }
-      }, 3000)
-      
-      // รีเซ็ต copied state
       setTimeout(() => setCopied(false), 2000)
-      
     } catch (error) {
-      console.error('❌ Copy operation failed:', error)
+      console.error('Copy operation failed:', error)
       setCopied(false)
-      
-      // เริ่ม monitoring อีกครั้งในกรณีที่ error
-      setTimeout(async () => {
-        if (window.electronAPI && window.electronAPI.clipboard && window.electronAPI.clipboard.startMonitoring) {
-          await window.electronAPI.clipboard.startMonitoring()
-        }
-      }, 1000)
     }
   }
 

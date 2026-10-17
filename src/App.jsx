@@ -10,9 +10,6 @@ import { LanguageProvider } from './utils/i18n'
 import { themeManager } from './utils/themeManager'
 import './scss/App.scss'
 
-// Global flag for internal copy
-window.isInternalCopyOperation = false;
-
 // Disable DevTools and Context Menu
 window.addEventListener('contextmenu', e => e.preventDefault());
 window.addEventListener('keydown', e => {
@@ -77,9 +74,6 @@ function App() {
   const lastTypeRef = useRef('')
   const isUpdatingRef = useRef(false)
   const updateQueueRef = useRef([])
-  
-  // Simple internal copy tracking
-  const internalCopyTimeoutRef = useRef(null)
 
   // Initialize theme manager and load available themes
   useEffect(() => {
@@ -254,15 +248,9 @@ function App() {
     return 'text'
   }, [])
 
-  // Process clipboard queue with internal copy check
+  // Process clipboard queue
   const processClipboardQueue = useCallback(() => {
     if (updateQueueRef.current.length === 0 || isUpdatingRef.current) {
-      return
-    }
-
-    // Check global flag
-    if (window.isInternalCopyOperation) {
-      updateQueueRef.current = [] // Clear queue
       return
     }
 
@@ -314,12 +302,6 @@ function App() {
 
   // Add clipboard item to queue
   const addClipboardItem = useCallback((data) => {
-    // Check global flag before adding to queue
-    if (window.isInternalCopyOperation) {
-      console.log('🚫 Ignoring clipboard change - internal copy operation')
-      return
-    }
-
     updateQueueRef.current.push({ data, timestamp: Date.now() })
 
     if (debounceRef.current) {
@@ -457,9 +439,6 @@ function App() {
         if (debounceRef.current) {
           clearTimeout(debounceRef.current)
         }
-        if (internalCopyTimeoutRef.current) {
-          clearTimeout(internalCopyTimeoutRef.current)
-        }
         updateQueueRef.current = []
         window.electronAPI.clipboard.stopMonitoring()
         unsubscribeClipboard()
@@ -472,7 +451,7 @@ function App() {
       let isInitialized = false
 
       const checkClipboard = async () => {
-        if (isUpdatingRef.current || window.isInternalCopyOperation) return
+        if (isUpdatingRef.current) return
 
         try {
           const permissionStatus = await navigator.permissions.query({ name: 'clipboard-read' })
@@ -559,9 +538,6 @@ function App() {
         if (debounceRef.current) {
           clearTimeout(debounceRef.current)
         }
-        if (internalCopyTimeoutRef.current) {
-          clearTimeout(internalCopyTimeoutRef.current)
-        }
         updateQueueRef.current = []
       }
     }
@@ -602,19 +578,9 @@ function App() {
     })
   }, [])
 
-  // Simple copyToClipboard with global flag
+  // Simple copyToClipboard
   const copyToClipboard = useCallback(async (content, type) => {
     try {
-      console.log('📄 Starting internal copy operation')
-      
-      // Set global flag
-      window.isInternalCopyOperation = true
-      
-      // Clear previous timeout
-      if (internalCopyTimeoutRef.current) {
-        clearTimeout(internalCopyTimeoutRef.current)
-      }
-      
       if (window.electronAPI && window.electronAPI.clipboard) {
         if (type === 'image') {
           await window.electronAPI.clipboard.setImage(content)
@@ -632,20 +598,8 @@ function App() {
           await navigator.clipboard.writeText(content)
         }
       }
-      
-      console.log('✅ Internal copy completed')
-      
-      // Reset flag after 5 seconds
-      internalCopyTimeoutRef.current = setTimeout(() => {
-        window.isInternalCopyOperation = false
-        console.log('🔓 Internal copy flag reset')
-      }, 5000)
-      
     } catch (error) {
       console.error('❌ Copy operation failed:', error)
-      
-      // Reset flag on error
-      window.isInternalCopyOperation = false
       
       if (type !== 'image') {
         try {
