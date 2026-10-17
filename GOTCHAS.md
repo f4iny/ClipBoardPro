@@ -64,3 +64,11 @@ This document records non-obvious quirks, developer traps, and hard-won lessons 
 - **The Trap:** When running `electron-builder` on Windows without Developer Mode or elevated privileges, 7-Zip fails to unpack `winCodeSign-2.6.0.7z` with `ERROR: Cannot create symbolic link : A required privilege is not held by the client` due to unused macOS (`darwin/.../*.dylib`) symlinks inside the archive.
 - **The Fix:** The Windows binaries (`rcedit-x64.exe`, `windows-10/`, `windows-6/`) in `%LOCALAPPDATA%\electron-builder\Cache\winCodeSign` extract properly. Ensuring the directory is named `winCodeSign-2.6.0` inside the cache prevents `electron-builder` from attempting repeated failed extractions.
 
+---
+
+### 8. Electron-Builder Packaging Whitelist (`build.files`)
+- **The Trap:** `package.json` uses an explicit `build.files` whitelist. If `main.js` imports files from outside `src/electron/` (e.g. `src/constants/`), but those directories are not in `build.files`, the app will work in `npm run electron` development mode (which reads directly from the filesystem) but will fail with `Error: Cannot find module` when packaged into `resources/app.asar`.
+- **The Fix:**
+  - Keep modules imported by `main.js` inside `src/electron/` (e.g. `src/electron/ipc_channels.js`).
+  - If sharing constants with renderer code, ensure the shared directory (e.g. `"src/constants/**/*"`) is explicitly added to `build.files` in `package.json`.
+

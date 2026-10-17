@@ -174,3 +174,13 @@ This file tracks all identified bugs, their root causes, and their verified fixe
 - **Root Cause:** 10+ empty `catch {}` blocks in `main.js`.
 - **Resolution:** Replaced empty blocks with informative `log(...)` statements recording error messages and context.
 
+#### BUG-029: Packaged win-unpacked JavaScript Error on Launch (`Cannot find module '../constants/ipcChannels.js'`)
+- **Symptoms:** Launching `ClipBoardPro.exe` from `release/win-unpacked` popped up a native Windows error dialog: `A JavaScript error occurred in the main process. Error: Cannot find module '../constants/ipcChannels.js'`.
+- **Root Cause:** `main.js` imported `IPC_CHANNELS` from `../constants/ipcChannels.js`. However, `package.json`'s `build.files` configuration only included `["dist-react/**/*", "src/electron/**/*", "node_modules/**/*"]`. The `src/constants/` directory was excluded from `resources/app.asar`.
+- **Resolution:**
+  1. Created `src/electron/ipc_channels.js` directly within `src/electron/` so it is unconditionally bundled into `app.asar`.
+  2. Updated `src/electron/main.js` to `import { IPC_CHANNELS } from './ipc_channels.js'`.
+  3. Added `"src/constants/**/*"` to `build.files` in `package.json`.
+  4. Re-exported `IPC_CHANNELS` from `src/constants/ipcChannels.js` for renderer/constant compatibility.
+  5. Rebuilt with `pnpm run build && pnpm dlx electron-builder --dir` and smoke-tested via detached WMI invocation (`release/win-unpacked/ClipBoardPro.exe`). Verified smooth launch without errors.
+

@@ -5,7 +5,7 @@ import { fileURLToPath } from 'url';
 import fs from 'fs';
 import { execFile } from 'child_process';
 import crypto from 'crypto';
-import { IPC_CHANNELS } from '../constants/ipcChannels.js';
+import { IPC_CHANNELS } from './ipc_channels.js';
 
 const MAX_LOG_SIZE_BYTES = 1024 * 1024; // 1 MB cap (LOW-03)
 let logCounter = 0;

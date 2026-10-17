@@ -59,6 +59,7 @@
     "files": [
       "dist-react/**/*",
       "src/electron/**/*",
+      "src/constants/**/*",
       "node_modules/**/*"
     ],
     "extraMetadata": {
