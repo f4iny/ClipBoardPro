@@ -19,7 +19,7 @@ This document explains why key engineering decisions were made in ClipBoardPro, 
 ### DEC-002: Disk-Backed Media Storage with 4 Strict Cleanup Triggers (ADR 0002)
 - **Decision:** Store full-resolution captured images on disk at `%APPDATA%\ClipBoardPro\media\<id>.png`. The React renderer only stores metadata, file paths, and 140px previews. Full binaries are cleaned up on:
   1. Individual card deletion.
-  2. FIFO list eviction beyond 50 items.
+  2. FIFO list eviction beyond capacity limit (configurable 25–500 items, default 50 via BUG-021).
   3. User triggering "Clear All".
   4. Startup orphan reconciliation.
 - **Why this way:**
@@ -44,10 +44,10 @@ This document explains why key engineering decisions were made in ClipBoardPro, 
 ### DEC-004: Native Chromium Content Visibility over JS Virtualization (ADR 0004)
 - **Decision:** Use native CSS `content-visibility: auto`, `contain: paint`, and `contain-intrinsic-size: 0 140px` on list cards instead of JavaScript virtualization libraries (`react-window`, `react-virtualized`).
 - **Why this way:**
-  - For a finite history of 50 items, JavaScript virtualization adds scroll event listener overhead, complex ref management, and risks visible blank flashes or layout pop-in during high-speed wheel scrolling.
+  - For typical history sizes (configurable 25–500 items, default 50), JavaScript virtualization adds scroll event listener overhead, complex ref management, and risks visible blank flashes or layout pop-in during high-speed wheel scrolling.
   - Native `content-visibility: auto` delegates off-screen layout omission directly to Chromium's optimized C++ rendering engine.
 - **Rejected Alternatives:**
-  - *React-window:* Unnecessary overhead and potential white flashes for a maximum history size of 50 items.
+  - *React-window:* Unnecessary overhead and potential white flashes for local clipboard history sizes.
 
 ---
 

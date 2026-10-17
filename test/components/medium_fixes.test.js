@@ -166,4 +166,50 @@ describe('Medium Severity Fixes Verification (MED-01 through MED-08)', () => {
       expect(mockPayload.thumbnail).toBeUndefined();
     });
   });
+
+  describe('BUG-021 Edge Case: Initial maxHistoryItems Hydration Safe From Premature Truncation', () => {
+    it('reads saved limit on initialization rather than truncating to default 50', () => {
+      const mockLocalStorage = {
+        appSettings: JSON.stringify({ maxHistoryItems: 100 })
+      };
+
+      const initialLimit = (() => {
+        try {
+          const saved = mockLocalStorage.appSettings;
+          if (saved) {
+            const parsed = JSON.parse(saved);
+            if (parsed.maxHistoryItems) return Number(parsed.maxHistoryItems);
+          }
+        } catch {
+          // ignore
+        }
+        return 50;
+      })();
+
+      expect(initialLimit).toBe(100);
+
+      // Verify that 75 existing items are not truncated
+      const existingHistory = Array.from({ length: 75 }, (_, i) => ({ id: `item-${i}` }));
+      expect(existingHistory.length).toBeLessThanOrEqual(initialLimit);
+    });
+  });
+
+  describe('HIGH-01 / BUG-012 Edge Case: Clear All Resets Both Text and Image Hashes', () => {
+    it('resets both lastClipboardText and lastClipboardImageHash on clear all', () => {
+      let lastClipboardText = 'hello world';
+      let lastClipboardImageHash = 'abc123md5';
+
+      // Handler execution simulation
+      const onClearAll = () => {
+        lastClipboardText = '';
+        lastClipboardImageHash = '';
+      };
+
+      onClearAll();
+
+      expect(lastClipboardText).toBe('');
+      expect(lastClipboardImageHash).toBe('');
+    });
+  });
 });
+

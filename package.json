@@ -14,7 +14,7 @@
   "scripts": {
     "dev": "vite",
     "dev:react": "vite",
-    "electron": "npm run build && electron .",
+    "electron": "pnpm run build && electron .",
     "build": "node scripts/build-native.mjs && vite build",
     "dist": "pnpm run build && electron-builder && node scripts/generate-checksums.mjs",
     "dist:linux": "pnpm run build && electron-builder --linux",

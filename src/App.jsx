@@ -67,10 +67,23 @@ function App() {
   const [showTrayNotifications, setShowTrayNotifications] = useState(true)
   const [quickAccessHotkey, setQuickAccessHotkey] = useState('Ctrl+Shift+X')
   const [clearAllHotkey, setClearAllHotkey] = useState('Ctrl+Shift+Delete')
-  const [maxHistoryItems, setMaxHistoryItems] = useState(50)
+  const [maxHistoryItems, setMaxHistoryItems] = useState(() => {
+    try {
+      const saved = localStorage.getItem('appSettings')
+      if (saved) {
+        const parsed = JSON.parse(saved)
+        if (parsed.maxHistoryItems) {
+          return Number(parsed.maxHistoryItems)
+        }
+      }
+    } catch {
+      // Fallback to default
+    }
+    return 50
+  })
 
   // Refs for performance optimization
-  const maxHistoryItemsRef = useRef(50)
+  const maxHistoryItemsRef = useRef(maxHistoryItems)
   const debounceRef = useRef(null)
   const lastContentRef = useRef('')
   const lastTypeRef = useRef('')

@@ -149,6 +149,11 @@ This file tracks all identified bugs, their root causes, and their verified fixe
 - **Root Cause:** `resolvedTarget.startsWith(resolvedMediaDir + path.sep)` performed case-sensitive string matching on Windows where drive letters often differ in casing.
 - **Resolution:** Added `.toLowerCase()` normalization for Windows path comparisons in `main.js:media:delete`. Verified with `test/electron/media_storage.test.js`.
 
+#### BUG-023: LanguageProvider Context Object Instantiation & Re-render Cascade (MED-08)
+- **Symptoms:** Re-rendering in parent or changing translations re-rendered all consumer components simultaneously due to referential identity loss.
+- **Root Cause:** Value passed to `LanguageContext.Provider` was a new non-memoized object literal created on each render.
+- **Resolution:** Wrapped context value with `useMemo` in `LanguageProvider.jsx`, memoized `t` and `changeLanguage` callbacks, and stabilized reference across re-renders.
+
 #### BUG-024: Hardcoded String Literals for IPC Channels (LOW-01)
 - **Symptoms:** 27+ string literals for IPC channels scattered across `main.js`, `preload.js`, and `App.jsx`, risking typos and uncoordinated refactorings.
 - **Root Cause:** Absence of a canonical channel registry.

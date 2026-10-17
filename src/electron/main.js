@@ -941,6 +941,7 @@ ipcMain.handle(IPC_CHANNELS.MEDIA_DELETE, async (event, filePath) => {
 ipcMain.handle(IPC_CHANNELS.MEDIA_CLEAR_ALL, async () => {
   try {
     lastClipboardImageHash = '';
+    lastClipboardText = '';
     if (fs.existsSync(mediaDir)) {
       const files = await fs.promises.readdir(mediaDir);
       for (const f of files) {
