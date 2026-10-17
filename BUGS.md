@@ -149,8 +149,28 @@ This file tracks all identified bugs, their root causes, and their verified fixe
 - **Root Cause:** `resolvedTarget.startsWith(resolvedMediaDir + path.sep)` performed case-sensitive string matching on Windows where drive letters often differ in casing.
 - **Resolution:** Added `.toLowerCase()` normalization for Windows path comparisons in `main.js:media:delete`. Verified with `test/electron/media_storage.test.js`.
 
-#### BUG-023: Non-memoized Context Value in `LanguageProvider.jsx` (MED-08)
-- **Symptoms:** Any internal re-render of `LanguageProvider` forced full subtree re-renders of all components consuming `useLanguage()`.
-- **Root Cause:** Context `value` object was created anew on every render without `useMemo`.
-- **Resolution:** Wrapped context value with `useMemo(..., [language, setLanguage, isLoading])`.
+#### BUG-024: Hardcoded String Literals for IPC Channels (LOW-01)
+- **Symptoms:** 27+ string literals for IPC channels scattered across `main.js`, `preload.js`, and `App.jsx`, risking typos and uncoordinated refactorings.
+- **Root Cause:** Absence of a canonical channel registry.
+- **Resolution:** Created `src/constants/ipcChannels.js` with structured constants for all window, lifecycle, and clipboard channels, and migrated `main.js` handlers to use them.
+
+#### BUG-025: Dead Browser Clipboard Fallback Polling Loop (LOW-02)
+- **Symptoms:** 96 lines of dead browser polling code (`navigator.clipboard.readText()`, `setInterval(..., 1500)`, `FileReader`) in `App.jsx` that were never executed in Electron.
+- **Root Cause:** Legacy web-demo fallback code left over from early prototyping.
+- **Resolution:** Stripped the browser fallback branch, retaining only clean Electron IPC monitoring.
+
+#### BUG-026: Unbounded Log Growth in `app-debug.log` (LOW-03)
+- **Symptoms:** `app-debug.log` grew indefinitely across long sessions, causing disk waste and blocking `appendFileSync` overhead.
+- **Root Cause:** Lack of log file size checks or rotation in `main.js:log()`.
+- **Resolution:** Implemented 1 MB log rotation (`rotateLogIfNeeded`), renaming full log to `app-debug.log.old` and keeping active log bounded.
+
+#### BUG-027: Unvalidated IPC Handler Arguments & Type Injection (LOW-04)
+- **Symptoms:** Invoking `set-clipboard-text`, `set-clipboard-image`, `set-close-behavior`, or `update-hotkeys` with malformed arguments could trigger uncaught TypeErrors or write corrupted config.
+- **Root Cause:** IPC handlers passed input arguments directly to Electron APIs and storage without type or boundary validation.
+- **Resolution:** Added strict type guards and sanitization to all IPC handlers, rejecting non-strings, malformed objects, and invalid enum values with warning logs.
+
+#### BUG-028: Silent Error Swallowing in IPC Handlers & Shortcuts (LOW-05)
+- **Symptoms:** Exceptions during clipboard reading, image decoding, or shortcut registration failed silently with empty `catch {}` blocks, making production diagnosis impossible.
+- **Root Cause:** 10+ empty `catch {}` blocks in `main.js`.
+- **Resolution:** Replaced empty blocks with informative `log(...)` statements recording error messages and context.
 

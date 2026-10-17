@@ -445,124 +445,24 @@ function App() {
     updateQueueRef.current = []
   }, [])
 
-  // Set up clipboard monitoring
+  // Set up clipboard monitoring (LOW-02: dead browser fallback stripped)
   useEffect(() => {
-    if (window.electronAPI && window.electronAPI.clipboard) {
-      window.electronAPI.clipboard.startMonitoring()
+    if (!window.electronAPI?.clipboard) return;
 
-      const unsubscribeClipboard = window.electronAPI.clipboard.onChange(addClipboardItem)
-      
-      const unsubscribeClearAll = window.electronAPI.onClearAllShortcut && window.electronAPI.onClearAllShortcut(() => {
-        clearHistory()
-      })
-      
-      return () => {
-        if (debounceRef.current) {
-          clearTimeout(debounceRef.current)
-        }
-        updateQueueRef.current = []
-        window.electronAPI.clipboard.stopMonitoring()
-        unsubscribeClipboard()
-        if (unsubscribeClearAll) unsubscribeClearAll()
+    window.electronAPI.clipboard.startMonitoring();
+    const unsubscribeClipboard = window.electronAPI.clipboard.onChange(addClipboardItem);
+    const unsubscribeClearAll = window.electronAPI.onClearAllShortcut?.(clearHistory);
+
+    return () => {
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current);
       }
-    } else {
-      // Browser fallback (same as before)
-      let intervalId
-      let lastClipboardContent = ''
-      let isInitialized = false
-
-      const checkClipboard = async () => {
-        if (isUpdatingRef.current) return
-
-        try {
-          const permissionStatus = await navigator.permissions.query({ name: 'clipboard-read' })
-          if (permissionStatus.state === 'denied') return
-
-          const currentContent = await navigator.clipboard.readText()
-          
-          if (!isInitialized) {
-            lastClipboardContent = currentContent
-            isInitialized = true
-            return
-          }
-          
-          if (currentContent && 
-              currentContent.trim() !== '' && 
-              currentContent !== lastClipboardContent &&
-              currentContent !== lastContentRef.current) {
-            
-            lastClipboardContent = currentContent
-            
-            addClipboardItem({
-              type: 'text',
-              content: currentContent,
-              timestamp: new Date().toISOString()
-            })
-            return
-          }
-
-          if (navigator.clipboard.read) {
-            try {
-              const clipboardItems = await navigator.clipboard.read()
-              
-              for (const clipboardItem of clipboardItems) {
-                for (const type of clipboardItem.types) {
-                  if (type.startsWith('image/')) {
-                    const blob = await clipboardItem.getType(type)
-                    const reader = new FileReader()
-                    
-                    reader.onload = (event) => {
-                      const imageData = event.target.result
-                      
-                      if (imageData && 
-                          imageData !== lastContentRef.current &&
-                          imageData.length > 1000) {
-                        
-                        addClipboardItem({
-                          type: 'image',
-                          content: imageData,
-                          timestamp: new Date().toISOString()
-                        })
-                      }
-                    }
-                    
-                    reader.readAsDataURL(blob)
-                    return
-                  }
-                }
-              }
-            } catch {
-              // Silent error handling
-            }
-          }
-
-        } catch {
-          // Silent error handling
-        }
-      }
-
-      const startMonitoring = async () => {
-        try {
-          await checkClipboard()
-          intervalId = setInterval(checkClipboard, 1500)
-        } catch {
-          // Silent error handling
-        }
-      }
-
-      startMonitoring()
-
-      return () => {
-        if (intervalId) {
-          clearInterval(intervalId)
-        }
-        if (debounceRef.current) {
-          clearTimeout(debounceRef.current)
-        }
-        updateQueueRef.current = []
-      }
-    }
-  }, [addClipboardItem, clearHistory])
+      updateQueueRef.current = [];
+      window.electronAPI.clipboard.stopMonitoring();
+      if (unsubscribeClipboard) unsubscribeClipboard();
+      if (unsubscribeClearAll) unsubscribeClearAll();
+    };
+  }, [addClipboardItem, clearHistory]);
 
   // Save to localStorage
   useEffect(() => {
