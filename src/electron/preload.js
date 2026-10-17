@@ -82,5 +82,5 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   platform: process.platform,
 
-  getVersion: () => process.env.npm_package_version || '1.1.1'
+  getVersion: () => process.env.npm_package_version || '1.1.2'
 });

@@ -194,7 +194,6 @@ function saveConfig() {
 let clipboardMonitorInterval = null;
 let lastClipboardText = '';
 let lastClipboardImageHash = '';
-let lastImageSize = null;
 let isMonitoringActive = false;
 let isInternalCopy = false;
 
@@ -216,9 +215,7 @@ function processClipboardImage(image) {
       return false;
     }
 
-    const imgSize = image.getSize();
     lastClipboardImageHash = imageHash;
-    lastImageSize = imgSize;
 
     const filePath = saveImageToDisk(image);
     if (mainWindow && !mainWindow.isDestroyed()) {
@@ -378,9 +375,6 @@ function startClipboardMonitoring() {
     lastClipboardText = clipboard.readText();
     const image = clipboard.readImage();
     lastClipboardImageHash = getClipboardImageHash(image);
-    if (!image.isEmpty()) {
-      lastImageSize = image.getSize();
-    }
   } catch {
     // Silent error handling
   }
@@ -915,7 +909,6 @@ ipcMain.handle(IPC_CHANNELS.SET_IMAGE, (event, imageSource) => {
       log('set-clipboard-image rejected: failed to create valid nativeImage');
       return false;
     }
-    lastImageSize = image.getSize();
     lastClipboardImageHash = getClipboardImageHash(image);
     clipboard.writeImage(image);
     return true;

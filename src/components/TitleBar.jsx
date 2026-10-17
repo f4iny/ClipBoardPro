@@ -67,7 +67,7 @@ const TitleBar = () => {
       <div className="title-bar-content">
         <div className="app-title">
           <img src="./images/ClipBoardPro_Logo.png" alt="Logo" className="app-icon-img" />
-          <span className="app-name">ClipBoard Pro Beta 1.1.1</span>
+          <span className="app-name">ClipBoard Pro Beta 1.1.2</span>
         </div>
         
         {isElectron && (

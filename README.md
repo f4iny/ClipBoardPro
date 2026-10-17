@@ -2,7 +2,7 @@
 
 A high-performance, lightweight clipboard manager desktop utility for Windows, macOS, and Linux built with Electron and React. It sits quietly in your system tray, watches your clipboard, and maintains a searchable history of everything you copy — text, code snippets, and images.
 
-**Version:** Beta 1.1.1  
+**Version:** Beta 1.1.2  
 **Repository:** [github.com/f4iny/ClipBoardPro](https://github.com/f4iny/ClipBoardPro)  
 **License:** GNU General Public License v3.0
 
@@ -131,8 +131,8 @@ Choose your desired packaging format:
   npm run dist:win
   ```
   Creates:
-  1. Windows setup wizard: `release/ClipBoardPro Setup 1.1.1.exe` (NSIS with shortcut & install directory options).
-  2. Standalone portable archive: `release/ClipBoardPro-1.1.1-win.zip` (ready for zero-install extraction).
+  1. Windows setup wizard: `release/ClipBoardPro Setup 1.1.2.exe` (NSIS with shortcut & install directory options).
+  2. Standalone portable archive: `release/ClipBoardPro-1.1.2-win.zip` (ready for zero-install extraction).
   3. Integrity checksums: `release/SHA256SUMS.txt` (SHA-256 hashes for all generated release artifacts).
 
 - **Standalone Unpacked Directory (`win-unpacked`):**
