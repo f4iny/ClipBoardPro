@@ -124,6 +124,33 @@ This file tracks all identified bugs, their root causes, and their verified fixe
 - **Symptoms:** 3 690 icon files packaged into `app.asar`, causing build bloat and slow asar packaging (GOTCHAS.md).
 - **Root Cause:** `lucide-react` was listed in `package.json` dependencies despite having 0 imports in `src/`.
 - **Resolution:** Removed package via `pnpm remove lucide-react`.
+#### BUG-018: Nested Component Declaration in `ThemeBuilder.jsx` (MED-01)
+- **Symptoms:** Typing hex codes or interacting with inputs inside `ColorPicker` caused text inputs to lose focus, reset cursor position, and trigger full sub-DOM teardown on every keystroke.
+- **Root Cause:** `ColorPicker` and `SliderInput` were declared inside the function body of `ThemeBuilder`, causing React to recreate their component types on every render.
+- **Resolution:** Moved `ColorPicker` and `SliderInput` to module scope at the top of `ThemeBuilder.jsx`.
 
+#### BUG-019: Artificial 800ms Cold-Start Delay in `App.jsx` (MED-02)
+- **Symptoms:** Application startup showed a spinning loader for 800 ms even though history data was already present in `localStorage`.
+- **Root Cause:** History reading effect used an arbitrary `setTimeout(..., 800)` callback.
+- **Resolution:** Removed `setTimeout`, loading history synchronously and immediately clearing loading state.
 
+#### BUG-020: Redundant Skia Image Resizing & Base64 Serialization in `main.js` (MED-03)
+- **Symptoms:** Capturing clipboard images caused CPU spikes and memory allocations due to Skia downscaling and Base64 string generation for a `thumbnail` field that the UI completely ignored (cards load disk image paths with `loading="lazy"`).
+- **Root Cause:** `processClipboardImage()` generated and sent unused `thumbnail: thumbnailDataURL`.
+- **Resolution:** Stripped Skia resizing and `thumbnailDataURL` generation from `main.js`.
+
+#### BUG-021: Phantom IPC Methods & Disconnected Storage Limit Controls (MED-04 & MED-05)
+- **Symptoms:** `SettingsModal` called nonexistent `window.electronAPI.getLanguage` and `setLanguage`, and the "Maximum items" select control had no `value` or `onChange` handler, while history size was hardcoded to 50 items.
+- **Root Cause:** Dead IPC boilerplate in `SettingsModal.jsx` and missing state wiring for history capacity.
+- **Resolution:** Removed phantom IPC calls, wired `maxHistoryItems` through `App.jsx` and `SettingsModal.jsx`, persisted the preference in `localStorage.appSettings`, dynamically enforced the limit upon capture and setting reduction, and marked unsupported auto-delete options as in development.
+
+#### BUG-022: Windows Drive Letter Casing Inconsistency in `media:delete` (MED-07)
+- **Symptoms:** Deleting media items or pruning history on Windows silently failed to unlink files from disk when path casing differed (e.g. `c:\` vs `C:\`), leaving orphan PNGs in `%APPDATA%\ClipBoardPro\media`.
+- **Root Cause:** `resolvedTarget.startsWith(resolvedMediaDir + path.sep)` performed case-sensitive string matching on Windows where drive letters often differ in casing.
+- **Resolution:** Added `.toLowerCase()` normalization for Windows path comparisons in `main.js:media:delete`. Verified with `test/electron/media_storage.test.js`.
+
+#### BUG-023: Non-memoized Context Value in `LanguageProvider.jsx` (MED-08)
+- **Symptoms:** Any internal re-render of `LanguageProvider` forced full subtree re-renders of all components consuming `useLanguage()`.
+- **Root Cause:** Context `value` object was created anew on every render without `useMemo`.
+- **Resolution:** Wrapped context value with `useMemo(..., [language, setLanguage, isLoading])`.
 

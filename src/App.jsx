@@ -67,8 +67,10 @@ function App() {
   const [showTrayNotifications, setShowTrayNotifications] = useState(true)
   const [quickAccessHotkey, setQuickAccessHotkey] = useState('Ctrl+Shift+X')
   const [clearAllHotkey, setClearAllHotkey] = useState('Ctrl+Shift+Delete')
+  const [maxHistoryItems, setMaxHistoryItems] = useState(50)
 
   // Refs for performance optimization
+  const maxHistoryItemsRef = useRef(50)
   const debounceRef = useRef(null)
   const lastContentRef = useRef('')
   const lastTypeRef = useRef('')
@@ -289,14 +291,16 @@ function App() {
       lastTypeRef.current = data.type
       isUpdatingRef.current = false
       
-      const dropped = prev.slice(49)
+      const limit = maxHistoryItemsRef.current || 50
+      const maxPrev = Math.max(0, limit - 1)
+      const dropped = prev.slice(maxPrev)
       dropped.forEach(d => {
         if (d && d.type === 'image' && d.content && window.electronAPI?.media?.delete) {
           window.electronAPI.media.delete(d.content)
         }
       })
 
-      return [newItem, ...prev.slice(0, 49)]
+      return [newItem, ...prev.slice(0, maxPrev)]
     })
   }, [detectContentType, generateId])
 
@@ -324,6 +328,7 @@ function App() {
         if (settings.showTrayNotifications !== undefined) setShowTrayNotifications(settings.showTrayNotifications)
         if (settings.quickAccessHotkey) setQuickAccessHotkey(settings.quickAccessHotkey)
         if (settings.clearAllHotkey) setClearAllHotkey(settings.clearAllHotkey)
+        if (settings.maxHistoryItems) setMaxHistoryItems(Number(settings.maxHistoryItems))
         if (settings.autoStart !== undefined) {
           setAutoStart(settings.autoStart)
         } else {
@@ -357,10 +362,28 @@ function App() {
       autoStart,
       showTrayNotifications,
       quickAccessHotkey,
-      clearAllHotkey
+      clearAllHotkey,
+      maxHistoryItems
     }
     localStorage.setItem('appSettings', JSON.stringify(settings))
-  }, [theme, language, viewMode, closeBehavior, startMinimized, autoStart, showTrayNotifications, quickAccessHotkey, clearAllHotkey])
+  }, [theme, language, viewMode, closeBehavior, startMinimized, autoStart, showTrayNotifications, quickAccessHotkey, clearAllHotkey, maxHistoryItems])
+
+  // Keep maxHistoryItemsRef in sync and prune history if limit reduced
+  useEffect(() => {
+    maxHistoryItemsRef.current = maxHistoryItems
+    setClipboardHistory(prev => {
+      if (prev.length > maxHistoryItems) {
+        const dropped = prev.slice(maxHistoryItems)
+        dropped.forEach(d => {
+          if (d && d.type === 'image' && d.content && window.electronAPI?.media?.delete) {
+            window.electronAPI.media.delete(d.content)
+          }
+        })
+        return prev.slice(0, maxHistoryItems)
+      }
+      return prev
+    })
+  }, [maxHistoryItems])
 
   // Send hotkeys to main process
   useEffect(() => {
@@ -389,27 +412,25 @@ function App() {
   // Load clipboard history
   useEffect(() => {
     const saved = localStorage.getItem('clipboardHistory')
-    setTimeout(() => {
-      if (saved) {
-        try {
-          const savedData = JSON.parse(saved)
-          setClipboardHistory(savedData)
-          if (savedData.length > 0) {
-            lastContentRef.current = savedData[0].content
-            lastTypeRef.current = savedData[0].type
-          }
-          const activeImages = savedData
-            .filter(item => item.type === 'image' && item.content)
-            .map(item => item.content)
-          if (window.electronAPI?.media?.reconcile) {
-            window.electronAPI.media.reconcile(activeImages)
-          }
-        } catch {
-          setClipboardHistory([])
+    if (saved) {
+      try {
+        const savedData = JSON.parse(saved)
+        setClipboardHistory(savedData)
+        if (savedData.length > 0) {
+          lastContentRef.current = savedData[0].content
+          lastTypeRef.current = savedData[0].type
         }
+        const activeImages = savedData
+          .filter(item => item.type === 'image' && item.content)
+          .map(item => item.content)
+        if (window.electronAPI?.media?.reconcile) {
+          window.electronAPI.media.reconcile(activeImages)
+        }
+      } catch {
+        setClipboardHistory([])
       }
-      setLoading(false)
-    }, 800)
+    }
+    setLoading(false)
   }, [])
 
   // Clear history handler
@@ -690,6 +711,7 @@ function App() {
       setShowTrayNotifications(true)
       setQuickAccessHotkey('Ctrl+Shift+X')
       setClearAllHotkey('Ctrl+Shift+Delete')
+      setMaxHistoryItems(50)
       
       // Reset theme to dark with proper handling
       console.log('🔄 Resetting theme to dark')
@@ -780,6 +802,8 @@ function App() {
         setQuickAccessHotkey={setQuickAccessHotkey}
         clearAllHotkey={clearAllHotkey}
         setClearAllHotkey={setClearAllHotkey}
+        maxHistoryItems={maxHistoryItems}
+        setMaxHistoryItems={setMaxHistoryItems}
       />
 
       <ThemeBuilder

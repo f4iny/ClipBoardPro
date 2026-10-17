@@ -196,22 +196,11 @@ function processClipboardImage(image) {
     lastClipboardImageHash = imageHash;
     lastImageSize = imgSize;
 
-    let thumbnailDataURL = '';
-    try {
-      if (imgSize.height > 140) {
-        const targetWidth = Math.max(1, Math.round(imgSize.width * (140 / imgSize.height)));
-        thumbnailDataURL = image.resize({ width: targetWidth, height: 140, quality: 'better' }).toDataURL();
-      } else {
-        thumbnailDataURL = image.toDataURL();
-      }
-    } catch {}
-
     const filePath = saveImageToDisk(image);
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('clipboard-changed', {
         type: 'image',
         content: filePath,
-        thumbnail: thumbnailDataURL,
         timestamp: new Date().toISOString()
       });
     }
@@ -877,7 +866,10 @@ ipcMain.handle('media:delete', async (event, filePath) => {
     if (filePath && typeof filePath === 'string') {
       const resolvedTarget = path.resolve(filePath);
       const resolvedMediaDir = path.resolve(mediaDir);
-      if (resolvedTarget.startsWith(resolvedMediaDir + path.sep) && fs.existsSync(resolvedTarget)) {
+      const isWindows = process.platform === 'win32';
+      const targetCheck = isWindows ? resolvedTarget.toLowerCase() : resolvedTarget;
+      const dirCheck = isWindows ? resolvedMediaDir.toLowerCase() : resolvedMediaDir;
+      if (targetCheck.startsWith(dirCheck + path.sep) && fs.existsSync(resolvedTarget)) {
         await fs.promises.unlink(resolvedTarget);
         return true;
       }

@@ -18,12 +18,15 @@ describe('Media Storage Lifecycle & Reconciliation (ADR-0002 / DEC-002)', () => 
     }
   });
 
-  // Reusable helper modeled on main.js ADR-0002 implementation
+  // Reusable helper modeled on main.js ADR-0002 implementation (with MED-07 fix)
   async function safeDeleteMedia(mediaDir, targetPath) {
     if (!targetPath || typeof targetPath !== 'string') return false;
     const resolvedTarget = path.resolve(targetPath);
     const resolvedMediaDir = path.resolve(mediaDir);
-    if (resolvedTarget.startsWith(resolvedMediaDir + path.sep) && fs.existsSync(resolvedTarget)) {
+    const isWindows = process.platform === 'win32';
+    const targetCheck = isWindows ? resolvedTarget.toLowerCase() : resolvedTarget;
+    const dirCheck = isWindows ? resolvedMediaDir.toLowerCase() : resolvedMediaDir;
+    if (targetCheck.startsWith(dirCheck + path.sep) && fs.existsSync(resolvedTarget)) {
       await fs.promises.unlink(resolvedTarget);
       return true;
     }
@@ -62,6 +65,23 @@ describe('Media Storage Lifecycle & Reconciliation (ADR-0002 / DEC-002)', () => 
     expect(fs.existsSync(file)).toBe(true);
 
     const deleted = await safeDeleteMedia(tempMediaDir, file);
+    expect(deleted).toBe(true);
+    expect(fs.existsSync(file)).toBe(false);
+  });
+
+  it('safely deletes media file when path casing differs (MED-07 Windows drive/path casing)', async () => {
+    const file = path.join(tempMediaDir, 'test-casing.png');
+    await fs.promises.writeFile(file, 'test-casing-png');
+    expect(fs.existsSync(file)).toBe(true);
+
+    let pathWithDifferentCase = file;
+    if (file[1] === ':') {
+      const driveLetter = file[0];
+      const toggledDrive = driveLetter === driveLetter.toUpperCase() ? driveLetter.toLowerCase() : driveLetter.toUpperCase();
+      pathWithDifferentCase = toggledDrive + file.slice(1);
+    }
+
+    const deleted = await safeDeleteMedia(tempMediaDir, pathWithDifferentCase);
     expect(deleted).toBe(true);
     expect(fs.existsSync(file)).toBe(false);
   });

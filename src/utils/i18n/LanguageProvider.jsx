@@ -1,5 +1,5 @@
 // src/utils/i18n/LanguageProvider.jsx
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import i18n from './i18n';
 import { LanguageContext } from './LanguageContext';
 
@@ -57,14 +57,14 @@ export function LanguageProvider({ children, initialLanguage }) {
     }
   }, []);
 
-  const value = {
+  const value = useMemo(() => ({
     language,
     setLanguage,
     t: i18n.t.bind(i18n),
     formatRelativeTime: i18n.formatRelativeTime.bind(i18n),
     getSupportedLanguages: i18n.getSupportedLanguages.bind(i18n),
     isLoading
-  };
+  }), [language, setLanguage, isLoading]);
 
   return (
     <LanguageContext.Provider value={value}>

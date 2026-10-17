@@ -24,7 +24,9 @@ const SettingsModal = ({
   quickAccessHotkey,
   setQuickAccessHotkey,
   clearAllHotkey,
-  setClearAllHotkey
+  setClearAllHotkey,
+  maxHistoryItems = 50,
+  setMaxHistoryItems
 }) => {
   const { t, language: i18nLanguage, setLanguage: setI18nLanguage, getSupportedLanguages } = useLanguage();
   const supportedLanguages = getSupportedLanguages();
@@ -49,31 +51,6 @@ const SettingsModal = ({
     setThemeCategories(categories)
   }, [availableThemes])
 
-  // Load language setting from Electron when modal opens
-  useEffect(() => {
-    const loadLanguageSetting = async () => {
-      if (isOpen && window.electronAPI && window.electronAPI.getLanguage) {
-        try {
-          const savedLanguage = await window.electronAPI.getLanguage();
-          console.log('Loaded language from Electron in Settings Modal:', savedLanguage);
-          
-          if (savedLanguage && savedLanguage !== i18nLanguage) {
-            setI18nLanguage(savedLanguage);
-            if (setLanguage) {
-              setLanguage(savedLanguage);
-            }
-          }
-        } catch (error) {
-          console.error('Failed to load language setting in Settings Modal:', error);
-        }
-      }
-    };
-    
-    if (isOpen) {
-      loadLanguageSetting();
-    }
-  }, [isOpen, i18nLanguage, setI18nLanguage, setLanguage]);
-
   if (!isOpen) return null
 
   // Handle language change
@@ -88,21 +65,6 @@ const SettingsModal = ({
       if (setLanguage) {
         await setLanguage(newLang);
       }
-      
-      // Save to Electron as well (double-check)
-      if (window.electronAPI && window.electronAPI.setLanguage) {
-        try {
-          const success = await window.electronAPI.setLanguage(newLang);
-          if (success) {
-            console.log('Language setting saved to Electron from Settings Modal');
-          } else {
-            console.error('Failed to save language setting to Electron from Settings Modal');
-          }
-        } catch (error) {
-          console.error('Error saving language to Electron:', error);
-        }
-      }
-      
     } catch (error) {
       console.error('Error in handleLanguageChange:', error);
     }
@@ -433,7 +395,11 @@ const SettingsModal = ({
               <div className="setting-group">
                 <label className="setting-label">{t('settings.storage.maximumItems')}</label>
                 <div className="setting-control">
-                  <select className="select-input">
+                  <select 
+                    className="select-input"
+                    value={maxHistoryItems}
+                    onChange={(e) => setMaxHistoryItems && setMaxHistoryItems(Number(e.target.value))}
+                  >
                     <option value="50">{t('settings.storage.items', { count: 50 })}</option>
                     <option value="100">{t('settings.storage.items', { count: 100 })}</option>
                     <option value="200">{t('settings.storage.items', { count: 200 })}</option>
@@ -443,21 +409,13 @@ const SettingsModal = ({
               </div>
               
               <div className="setting-group">
-                <label className="setting-label">{t('settings.storage.autoDelete')}</label>
+                <label className="setting-label">
+                  {t('settings.storage.autoDelete')}
+                  <span style={{ fontSize: '0.75rem', opacity: 0.6, marginLeft: '6px' }}>(Coming soon)</span>
+                </label>
                 <div className="setting-control">
-                  <select className="select-input">
+                  <select className="select-input" disabled value="never" title="Feature in development">
                     <option value="never">{t('settings.storage.never')}</option>
-                    <option value="5min">{t('settings.storage.after5min')}</option>
-                    <option value="15min">{t('settings.storage.after15min')}</option>
-                    <option value="30min">{t('settings.storage.after30min')}</option>
-                    <option value="1hour">{t('settings.storage.after1hour')}</option>
-                    <option value="2hours">{t('settings.storage.after2hours')}</option>
-                    <option value="6hours">{t('settings.storage.after6hours')}</option>
-                    <option value="12hours">{t('settings.storage.after12hours')}</option>
-                    <option value="1day">{t('settings.storage.after1day')}</option>
-                    <option value="3days">{t('settings.storage.after3days')}</option>
-                    <option value="7days">{t('settings.storage.after7days')}</option>
-                    <option value="30days">{t('settings.storage.after30days')}</option>
                   </select>
                 </div>
               </div>
