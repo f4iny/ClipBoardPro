@@ -1,11 +1,5 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
-// Remove any existing listeners to prevent memory leaks
-const removeAllListeners = () => {
-  ipcRenderer.removeAllListeners('window-maximized');
-  ipcRenderer.removeAllListeners('clipboard-changed');
-};
-
 // Expose window controls to renderer process
 contextBridge.exposeInMainWorld('electronAPI', {
   // Window controls
@@ -86,9 +80,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     };
   },
 
-  removeAllListeners,
-
   platform: process.platform,
 
-  getVersion: () => process.env.npm_package_version || '1.1.1'
+  getVersion: () => process.env.npm_package_version || '1.1.2'
 });

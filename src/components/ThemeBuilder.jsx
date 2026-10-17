@@ -2,6 +2,141 @@ import { useState, useEffect, useRef } from 'react'
 import { themeManager } from '../utils/themeManager'
 import '../scss/ThemeBuilder.scss'
 
+// Enhanced color picker component with drag to select (extracted to module scope to avoid unmount/remount on render)
+const ColorPicker = ({ label, value, onChange, description }) => {
+  const [isEditing, setIsEditing] = useState(false)
+  const [tempValue, setTempValue] = useState(value)
+  const [mouseDownTime, setMouseDownTime] = useState(0)
+  const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 })
+  const colorInputRef = useRef(null)
+  const CLICK_THRESHOLD = 200 // milliseconds
+  const MOVE_THRESHOLD = 5 // pixels
+
+  // Update temp value when prop value changes
+  useEffect(() => {
+    setTempValue(value)
+  }, [value])
+
+  // Handle mouse down - start tracking
+  const handleMouseDown = (e) => {
+    setMouseDownTime(Date.now())
+    setMousePosition({ x: e.clientX, y: e.clientY })
+  }
+
+  // Handle mouse up - determine if it's click or drag
+  const handleMouseUp = (e) => {
+    const mouseUpTime = Date.now()
+    const timeDiff = mouseUpTime - mouseDownTime
+    const deltaX = Math.abs(e.clientX - mousePosition.x)
+    const deltaY = Math.abs(e.clientY - mousePosition.y)
+    const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY)
+
+    // Only open color picker if it was a long press or drag
+    if (timeDiff > CLICK_THRESHOLD || distance > MOVE_THRESHOLD) {
+      colorInputRef.current?.click()
+    }
+  }
+
+  // Handle text input changes
+  const handleTextChange = (e) => {
+    const newValue = e.target.value
+    setTempValue(newValue)
+    
+    // Validate hex color format
+    if (/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/.test(newValue)) {
+      onChange(newValue)
+    }
+  }
+
+  // Handle text input blur
+  const handleTextBlur = () => {
+    setIsEditing(false)
+    // Revert to original value if invalid
+    if (!/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/.test(tempValue)) {
+      setTempValue(value)
+    }
+  }
+
+  // Handle text input key press
+  const handleTextKeyDown = (e) => {
+    if (e.key === 'Enter') {
+      e.target.blur()
+    } else if (e.key === 'Escape') {
+      setTempValue(value)
+      setIsEditing(false)
+    }
+  }
+
+  // Handle color value click for editing
+  const handleColorValueClick = (e) => {
+    e.stopPropagation()
+    setIsEditing(true)
+  }
+
+  return (
+    <div className="color-picker">
+      <label className="color-label">
+        {label}
+        {description && <span className="color-description">{description}</span>}
+      </label>
+      <div className="color-input-wrapper">
+        <div 
+          className="color-preview" 
+          style={{ backgroundColor: value }}
+          onMouseDown={handleMouseDown}
+          onMouseUp={handleMouseUp}
+          onContextMenu={(e) => e.preventDefault()} // Prevent right-click menu
+        >
+          {isEditing ? (
+            <input
+              type="text"
+              value={tempValue}
+              onChange={handleTextChange}
+              onBlur={handleTextBlur}
+              onKeyDown={handleTextKeyDown}
+              className="color-text-input"
+              autoFocus
+              onFocus={(e) => e.target.select()}
+            />
+          ) : (
+            <span 
+              className="color-value"
+              onClick={handleColorValueClick}
+            >
+              {value}
+            </span>
+          )}
+        </div>
+        <input
+          ref={colorInputRef}
+          type="color"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className="color-input"
+        />
+      </div>
+    </div>
+  )
+}
+
+// Slider component (module scope)
+const SliderInput = ({ label, value, onChange, min = 0, max = 20, unit = 'px' }) => (
+  <div className="slider-input">
+    <label className="slider-label">
+      {label}
+      <span className="slider-value">{value}{unit}</span>
+    </label>
+    <input
+      type="range"
+      min={min}
+      max={max}
+      value={value}
+      onChange={(e) => onChange(parseInt(e.target.value))}
+      className="slider"
+    />
+  </div>
+)
+
 const ThemeBuilder = ({ isOpen, onClose, currentTheme, onThemeApply }) => {
   const [themeName, setThemeName] = useState('')
   const [themeAuthor, setThemeAuthor] = useState('')
@@ -352,141 +487,6 @@ const ThemeBuilder = ({ isOpen, onClose, currentTheme, onThemeApply }) => {
     setIsPreviewMode(false)
     onClose()
   }
-
-  // Enhanced color picker component with drag to select
-  const ColorPicker = ({ label, value, onChange, description }) => {
-    const [isEditing, setIsEditing] = useState(false)
-    const [tempValue, setTempValue] = useState(value)
-    const [mouseDownTime, setMouseDownTime] = useState(0)
-    const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 })
-    const colorInputRef = useRef(null)
-    const CLICK_THRESHOLD = 200 // milliseconds
-    const MOVE_THRESHOLD = 5 // pixels
-
-    // Update temp value when prop value changes
-    useEffect(() => {
-      setTempValue(value)
-    }, [value])
-
-    // Handle mouse down - start tracking
-    const handleMouseDown = (e) => {
-      setMouseDownTime(Date.now())
-      setMousePosition({ x: e.clientX, y: e.clientY })
-    }
-
-    // Handle mouse up - determine if it's click or drag
-    const handleMouseUp = (e) => {
-      const mouseUpTime = Date.now()
-      const timeDiff = mouseUpTime - mouseDownTime
-      const deltaX = Math.abs(e.clientX - mousePosition.x)
-      const deltaY = Math.abs(e.clientY - mousePosition.y)
-      const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY)
-
-      // Only open color picker if it was a long press or drag
-      if (timeDiff > CLICK_THRESHOLD || distance > MOVE_THRESHOLD) {
-        colorInputRef.current?.click()
-      }
-    }
-
-    // Handle text input changes
-    const handleTextChange = (e) => {
-      const newValue = e.target.value
-      setTempValue(newValue)
-      
-      // Validate hex color format
-      if (/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/.test(newValue)) {
-        onChange(newValue)
-      }
-    }
-
-    // Handle text input blur
-    const handleTextBlur = () => {
-      setIsEditing(false)
-      // Revert to original value if invalid
-      if (!/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/.test(tempValue)) {
-        setTempValue(value)
-      }
-    }
-
-    // Handle text input key press
-    const handleTextKeyDown = (e) => {
-      if (e.key === 'Enter') {
-        e.target.blur()
-      } else if (e.key === 'Escape') {
-        setTempValue(value)
-        setIsEditing(false)
-      }
-    }
-
-    // Handle color value click for editing
-    const handleColorValueClick = (e) => {
-      e.stopPropagation()
-      setIsEditing(true)
-    }
-
-    return (
-      <div className="color-picker">
-        <label className="color-label">
-          {label}
-          {description && <span className="color-description">{description}</span>}
-        </label>
-        <div className="color-input-wrapper">
-          <div 
-            className="color-preview" 
-            style={{ backgroundColor: value }}
-            onMouseDown={handleMouseDown}
-            onMouseUp={handleMouseUp}
-            onContextMenu={(e) => e.preventDefault()} // Prevent right-click menu
-          >
-            {isEditing ? (
-              <input
-                type="text"
-                value={tempValue}
-                onChange={handleTextChange}
-                onBlur={handleTextBlur}
-                onKeyDown={handleTextKeyDown}
-                className="color-text-input"
-                autoFocus
-                onFocus={(e) => e.target.select()}
-              />
-            ) : (
-              <span 
-                className="color-value"
-                onClick={handleColorValueClick}
-              >
-                {value}
-              </span>
-            )}
-          </div>
-          <input
-            ref={colorInputRef}
-            type="color"
-            value={value}
-            onChange={(e) => onChange(e.target.value)}
-            className="color-input"
-          />
-        </div>
-      </div>
-    )
-  }
-
-  // Slider component
-  const SliderInput = ({ label, value, onChange, min = 0, max = 20, unit = 'px' }) => (
-    <div className="slider-input">
-      <label className="slider-label">
-        {label}
-        <span className="slider-value">{value}{unit}</span>
-      </label>
-      <input
-        type="range"
-        min={min}
-        max={max}
-        value={value}
-        onChange={(e) => onChange(parseInt(e.target.value))}
-        className="slider"
-      />
-    </div>
-  )
 
   if (!isOpen) return null
 

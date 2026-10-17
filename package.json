@@ -1,7 +1,7 @@
 {
   "name": "ClipBoardPro",
   "private": true,
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "Advanced clipboard management tool for enhanced productivity",
   "author": {
     "name": "f4iny",
@@ -14,12 +14,12 @@
   "scripts": {
     "dev": "vite",
     "dev:react": "vite",
-    "electron": "npm run build && electron .",
+    "electron": "pnpm run build && electron .",
     "build": "node scripts/build-native.mjs && vite build",
-    "dist": "npm run build && electron-builder && node scripts/generate-checksums.mjs",
-    "dist:linux": "npm run build && electron-builder --linux",
-    "dist:win": "npm run build && electron-builder --win && node scripts/generate-checksums.mjs",
-    "dist:dir": "npm run build && electron-builder --dir",
+    "dist": "pnpm run build && electron-builder && node scripts/generate-checksums.mjs",
+    "dist:linux": "pnpm run build && electron-builder --linux",
+    "dist:win": "pnpm run build && electron-builder --win && node scripts/generate-checksums.mjs",
+    "dist:dir": "pnpm run build && electron-builder --dir",
     "dist:checksums": "node scripts/generate-checksums.mjs",
     "lint": "eslint .",
     "test": "vitest run",
@@ -29,7 +29,6 @@
   "dependencies": {
     "@fontsource/inter": "^5.3.0",
     "@fontsource/jetbrains-mono": "^5.3.0",
-    "lucide-react": "^0.536.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-icons": "^5.5.0"
@@ -60,6 +59,7 @@
     "files": [
       "dist-react/**/*",
       "src/electron/**/*",
+      "src/constants/**/*",
       "node_modules/**/*"
     ],
     "extraMetadata": {

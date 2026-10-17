@@ -13,6 +13,14 @@ This file tracks all identified bugs, their root causes, and their verified fixe
 | **BUG-007** | High Idle Memory Footprint in Tray (~476 MB Working Set) | Medium | **RESOLVED** | ADR 0001 & `test/electron/memory_trim.test.js` |
 | **BUG-008** | GPU/CPU Load Spike during Active Scrolling on 240 Hz Displays | High | **RESOLVED** | Hardware compositing layers & CSS refactor |
 | **BUG-009** | Dormant Clipboard Monitoring on Windows (Missing OS Clipboard Listener Registration) | Critical | **RESOLVED** | Active cross-platform 350ms debounced interval |
+| **BUG-010** | High GPU Load (~47%) During Scrolling from Backdrop Shaders | High | **RESOLVED** | Shader purge, 120 FPS cap & CSS variable refactor |
+| **BUG-011** | Secondary Instance Lock Exit Bypass (Async `app.quit()` Continuation) | Critical | **RESOLVED** | Synchronous `process.exit(0)` on lock failure |
+| **BUG-012** | Consecutive Matching-Resolution Screenshots Discarded & V8 Heap Bloat | Critical | **RESOLVED** | `test/electron/image_deduplication.test.js` & Bitmap MD5 Hashing |
+| **BUG-013** | Global Listener Destruction via `TitleBar` Unmount (`removeAllListeners`) | High | **RESOLVED** | Scoped `cleanup()` unbind and removal of global purge |
+| **BUG-014** | Multi-tier Internal Copy Timeout Race & 5-Second System Clipboard Blindness | High | **RESOLVED** | Content-based deduplication without blind lockout timers |
+| **BUG-015** | Fatal Duplicate IPC Handler Crash on Secondary Window Creation | High | **RESOLVED** | Top-level module `registerWindowIpcHandlers()` registration |
+| **BUG-016** | Missing Electron Navigation Sandbox Guards & Window Open Interception | High | **RESOLVED** | `sandbox: true`, `setWindowOpenHandler`, `will-navigate` |
+| **BUG-017** | Unused `lucide-react` Dependency Inflation (3 690 Extraneous Files) | High | **RESOLVED** | Package uninstalled via `pnpm remove lucide-react` |
 
 ---
 
@@ -78,4 +86,106 @@ This file tracks all identified bugs, their root causes, and their verified fixe
   - Replaced card `box-shadow` with crisp hardware-composited `1px solid var(--border-secondary)` borders.
   - Added Chromium command-line switch `app.commandLine.appendSwitch('limit-fps', '120')` in `main.js`.
   - Replaced JS `MutationObserver` and `getComputedStyle` in `ClipboardItem.jsx` with native CSS variables scoped to card type classes (`.text`, `.code`, `.image`).
+
+#### BUG-011: Secondary Instance Lock Exit Bypass (Async `app.quit()` Continuation)
+- **Symptoms:** Running a second instance of `ClipBoardPro.exe` caused file-lock contention and flickering tray icon/window creation before quitting.
+- **Root Cause:** `app.quit()` in Electron is asynchronous and signals the event loop to exit on the next tick. The secondary instance continued synchronous execution through the rest of `main.js`, creating media directories, loading configuration, and attaching `app.whenReady()` handlers.
+- **Resolution:** Added synchronous `process.exit(0)` immediately following `app.quit()` when `!gotTheLock`.
+
+#### BUG-012: Consecutive Matching-Resolution Screenshots Discarded & V8 Heap Bloat
+- **Symptoms:** Taking two consecutive full-screen screenshots (or copying two distinct images sharing the same dimensions, e.g. 1920x1080) caused the second image to be silently ignored and dropped from history. Furthermore, V8 heap was bloated with up to 50 MB DataURLs in `lastClipboardImage`.
+- **Root Cause:** Image deduplication checked `sameAsLast = lastImageSize.width === imgSize.width && lastImageSize.height === imgSize.height`. If dimensions matched, `if (!sameAsLast)` short-circuited the entire save-to-disk and IPC notification pipeline, making the content check unreachable.
+- **Resolution:**
+  - Replaced dimension check and 50 MB Base64 string retention with fast bitmap MD5 hashing (`crypto.createHash('md5').update(currentImage.toBitmap()).digest('hex')`).
+  - Unified screenshot and clipboard image handling into a single deduplicated `processClipboardImage` function.
+  - Verified with `test/electron/image_deduplication.test.js`.
+
+#### BUG-013: Global Listener Destruction via `TitleBar` Unmount (`removeAllListeners`)
+- **Symptoms:** Re-rendering or unmounting `TitleBar` (e.g. in React 18 StrictMode or theme toggling) permanently killed clipboard event ingestion in `App.jsx`.
+- **Root Cause:** `TitleBar.jsx` invoked `window.electronAPI.removeAllListeners()`, which internally called `ipcRenderer.removeAllListeners('clipboard-changed')`.
+- **Resolution:** Removed the call from `TitleBar.jsx` (relying on scoped `cleanup()`) and removed `removeAllListeners` from `preload.js`.
+
+#### BUG-014: Multi-tier Internal Copy Timeout Race & 5-Second System Clipboard Blindness
+- **Symptoms:** Copying an item from ClipBoardPro blocked capturing any external clipboard updates for 5 seconds.
+- **Root Cause:** Three uncoordinated layers (`ClipboardItem.jsx` 3s timer, `App.jsx` 5s global flag, `main.js` 1.2s timeout) locked out incoming events.
+- **Resolution:** Replaced blind time-based lockouts with synchronous content recording in `main.js` (`lastClipboardText`, `lastClipboardImageHash`), eliminating all React timeouts and `stopMonitoring` invocations. Verified with `test/electron/security_and_handlers.test.js`.
+
+#### BUG-015: Fatal Duplicate IPC Handler Crash on Secondary Window Creation
+- **Symptoms:** Calling `createWindow()` a second time (e.g. on macOS `activate` or crash recovery) threw `Error: Attempted to register a second handler for 'window-minimize'` and crashed Electron.
+- **Root Cause:** `ipcMain.handle` registrations were declared inside the body of `createWindow()`.
+- **Resolution:** Extracted all window control IPC handlers to `registerWindowIpcHandlers()`, executed once on `app.whenReady()`.
+
+#### BUG-016: Missing Electron Navigation Sandbox Guards & Window Open Interception
+- **Symptoms:** Unconstrained child windows could be opened via `window.open` or links with `target="_blank"`, and main window lacked OS sandbox isolation.
+- **Root Cause:** Missing `sandbox: true`, `setWindowOpenHandler`, and `will-navigate` event interceptors in `main.js`.
+- **Resolution:** Configured `sandbox: true`, forced `setWindowOpenHandler` to delegate `http/https` to `shell.openExternal` and return `{ action: 'deny' }`, and intercepted `will-navigate`. Verified with `test/electron/security_and_handlers.test.js`.
+
+#### BUG-017: Unused `lucide-react` Dependency Inflation (3 690 Extraneous Files)
+- **Symptoms:** 3 690 icon files packaged into `app.asar`, causing build bloat and slow asar packaging (GOTCHAS.md).
+- **Root Cause:** `lucide-react` was listed in `package.json` dependencies despite having 0 imports in `src/`.
+- **Resolution:** Removed package via `pnpm remove lucide-react`.
+#### BUG-018: Nested Component Declaration in `ThemeBuilder.jsx` (MED-01)
+- **Symptoms:** Typing hex codes or interacting with inputs inside `ColorPicker` caused text inputs to lose focus, reset cursor position, and trigger full sub-DOM teardown on every keystroke.
+- **Root Cause:** `ColorPicker` and `SliderInput` were declared inside the function body of `ThemeBuilder`, causing React to recreate their component types on every render.
+- **Resolution:** Moved `ColorPicker` and `SliderInput` to module scope at the top of `ThemeBuilder.jsx`.
+
+#### BUG-019: Artificial 800ms Cold-Start Delay in `App.jsx` (MED-02)
+- **Symptoms:** Application startup showed a spinning loader for 800 ms even though history data was already present in `localStorage`.
+- **Root Cause:** History reading effect used an arbitrary `setTimeout(..., 800)` callback.
+- **Resolution:** Removed `setTimeout`, loading history synchronously and immediately clearing loading state.
+
+#### BUG-020: Redundant Skia Image Resizing & Base64 Serialization in `main.js` (MED-03)
+- **Symptoms:** Capturing clipboard images caused CPU spikes and memory allocations due to Skia downscaling and Base64 string generation for a `thumbnail` field that the UI completely ignored (cards load disk image paths with `loading="lazy"`).
+- **Root Cause:** `processClipboardImage()` generated and sent unused `thumbnail: thumbnailDataURL`.
+- **Resolution:** Stripped Skia resizing and `thumbnailDataURL` generation from `main.js`.
+
+#### BUG-021: Phantom IPC Methods & Disconnected Storage Limit Controls (MED-04 & MED-05)
+- **Symptoms:** `SettingsModal` called nonexistent `window.electronAPI.getLanguage` and `setLanguage`, and the "Maximum items" select control had no `value` or `onChange` handler, while history size was hardcoded to 50 items.
+- **Root Cause:** Dead IPC boilerplate in `SettingsModal.jsx` and missing state wiring for history capacity.
+- **Resolution:** Removed phantom IPC calls, wired `maxHistoryItems` through `App.jsx` and `SettingsModal.jsx`, persisted the preference in `localStorage.appSettings`, dynamically enforced the limit upon capture and setting reduction, and marked unsupported auto-delete options as in development.
+
+#### BUG-022: Windows Drive Letter Casing Inconsistency in `media:delete` (MED-07)
+- **Symptoms:** Deleting media items or pruning history on Windows silently failed to unlink files from disk when path casing differed (e.g. `c:\` vs `C:\`), leaving orphan PNGs in `%APPDATA%\ClipBoardPro\media`.
+- **Root Cause:** `resolvedTarget.startsWith(resolvedMediaDir + path.sep)` performed case-sensitive string matching on Windows where drive letters often differ in casing.
+- **Resolution:** Added `.toLowerCase()` normalization for Windows path comparisons in `main.js:media:delete`. Verified with `test/electron/media_storage.test.js`.
+
+#### BUG-023: LanguageProvider Context Object Instantiation & Re-render Cascade (MED-08)
+- **Symptoms:** Re-rendering in parent or changing translations re-rendered all consumer components simultaneously due to referential identity loss.
+- **Root Cause:** Value passed to `LanguageContext.Provider` was a new non-memoized object literal created on each render.
+- **Resolution:** Wrapped context value with `useMemo` in `LanguageProvider.jsx`, memoized `t` and `changeLanguage` callbacks, and stabilized reference across re-renders.
+
+#### BUG-024: Hardcoded String Literals for IPC Channels (LOW-01)
+- **Symptoms:** 27+ string literals for IPC channels scattered across `main.js`, `preload.js`, and `App.jsx`, risking typos and uncoordinated refactorings.
+- **Root Cause:** Absence of a canonical channel registry.
+- **Resolution:** Created `src/constants/ipcChannels.js` with structured constants for all window, lifecycle, and clipboard channels, and migrated `main.js` handlers to use them.
+
+#### BUG-025: Dead Browser Clipboard Fallback Polling Loop (LOW-02)
+- **Symptoms:** 96 lines of dead browser polling code (`navigator.clipboard.readText()`, `setInterval(..., 1500)`, `FileReader`) in `App.jsx` that were never executed in Electron.
+- **Root Cause:** Legacy web-demo fallback code left over from early prototyping.
+- **Resolution:** Stripped the browser fallback branch, retaining only clean Electron IPC monitoring.
+
+#### BUG-026: Unbounded Log Growth in `app-debug.log` (LOW-03)
+- **Symptoms:** `app-debug.log` grew indefinitely across long sessions, causing disk waste and blocking `appendFileSync` overhead.
+- **Root Cause:** Lack of log file size checks or rotation in `main.js:log()`.
+- **Resolution:** Implemented 1 MB log rotation (`rotateLogIfNeeded`), renaming full log to `app-debug.log.old` and keeping active log bounded.
+
+#### BUG-027: Unvalidated IPC Handler Arguments & Type Injection (LOW-04)
+- **Symptoms:** Invoking `set-clipboard-text`, `set-clipboard-image`, `set-close-behavior`, or `update-hotkeys` with malformed arguments could trigger uncaught TypeErrors or write corrupted config.
+- **Root Cause:** IPC handlers passed input arguments directly to Electron APIs and storage without type or boundary validation.
+- **Resolution:** Added strict type guards and sanitization to all IPC handlers, rejecting non-strings, malformed objects, and invalid enum values with warning logs.
+
+#### BUG-028: Silent Error Swallowing in IPC Handlers & Shortcuts (LOW-05)
+- **Symptoms:** Exceptions during clipboard reading, image decoding, or shortcut registration failed silently with empty `catch {}` blocks, making production diagnosis impossible.
+- **Root Cause:** 10+ empty `catch {}` blocks in `main.js`.
+- **Resolution:** Replaced empty blocks with informative `log(...)` statements recording error messages and context.
+
+#### BUG-029: Packaged win-unpacked JavaScript Error on Launch (`Cannot find module '../constants/ipcChannels.js'`)
+- **Symptoms:** Launching `ClipBoardPro.exe` from `release/win-unpacked` popped up a native Windows error dialog: `A JavaScript error occurred in the main process. Error: Cannot find module '../constants/ipcChannels.js'`.
+- **Root Cause:** `main.js` imported `IPC_CHANNELS` from `../constants/ipcChannels.js`. However, `package.json`'s `build.files` configuration only included `["dist-react/**/*", "src/electron/**/*", "node_modules/**/*"]`. The `src/constants/` directory was excluded from `resources/app.asar`.
+- **Resolution:**
+  1. Created `src/electron/ipc_channels.js` directly within `src/electron/` so it is unconditionally bundled into `app.asar`.
+  2. Updated `src/electron/main.js` to `import { IPC_CHANNELS } from './ipc_channels.js'`.
+  3. Added `"src/constants/**/*"` to `build.files` in `package.json`.
+  4. Re-exported `IPC_CHANNELS` from `src/constants/ipcChannels.js` for renderer/constant compatibility.
+  5. Rebuilt with `pnpm run build && pnpm dlx electron-builder --dir` and smoke-tested via detached WMI invocation (`release/win-unpacked/ClipBoardPro.exe`). Verified smooth launch without errors.
 

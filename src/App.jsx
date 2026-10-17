@@ -10,9 +10,6 @@ import { LanguageProvider } from './utils/i18n'
 import { themeManager } from './utils/themeManager'
 import './scss/App.scss'
 
-// Global flag for internal copy
-window.isInternalCopyOperation = false;
-
 // Disable DevTools and Context Menu
 window.addEventListener('contextmenu', e => e.preventDefault());
 window.addEventListener('keydown', e => {
@@ -70,16 +67,28 @@ function App() {
   const [showTrayNotifications, setShowTrayNotifications] = useState(true)
   const [quickAccessHotkey, setQuickAccessHotkey] = useState('Ctrl+Shift+X')
   const [clearAllHotkey, setClearAllHotkey] = useState('Ctrl+Shift+Delete')
+  const [maxHistoryItems, setMaxHistoryItems] = useState(() => {
+    try {
+      const saved = localStorage.getItem('appSettings')
+      if (saved) {
+        const parsed = JSON.parse(saved)
+        if (parsed.maxHistoryItems) {
+          return Number(parsed.maxHistoryItems)
+        }
+      }
+    } catch {
+      // Fallback to default
+    }
+    return 50
+  })
 
   // Refs for performance optimization
+  const maxHistoryItemsRef = useRef(maxHistoryItems)
   const debounceRef = useRef(null)
   const lastContentRef = useRef('')
   const lastTypeRef = useRef('')
   const isUpdatingRef = useRef(false)
   const updateQueueRef = useRef([])
-  
-  // Simple internal copy tracking
-  const internalCopyTimeoutRef = useRef(null)
 
   // Initialize theme manager and load available themes
   useEffect(() => {
@@ -254,15 +263,9 @@ function App() {
     return 'text'
   }, [])
 
-  // Process clipboard queue with internal copy check
+  // Process clipboard queue
   const processClipboardQueue = useCallback(() => {
     if (updateQueueRef.current.length === 0 || isUpdatingRef.current) {
-      return
-    }
-
-    // Check global flag
-    if (window.isInternalCopyOperation) {
-      updateQueueRef.current = [] // Clear queue
       return
     }
 
@@ -301,25 +304,21 @@ function App() {
       lastTypeRef.current = data.type
       isUpdatingRef.current = false
       
-      const dropped = prev.slice(49)
+      const limit = maxHistoryItemsRef.current || 50
+      const maxPrev = Math.max(0, limit - 1)
+      const dropped = prev.slice(maxPrev)
       dropped.forEach(d => {
         if (d && d.type === 'image' && d.content && window.electronAPI?.media?.delete) {
           window.electronAPI.media.delete(d.content)
         }
       })
 
-      return [newItem, ...prev.slice(0, 49)]
+      return [newItem, ...prev.slice(0, maxPrev)]
     })
   }, [detectContentType, generateId])
 
   // Add clipboard item to queue
   const addClipboardItem = useCallback((data) => {
-    // Check global flag before adding to queue
-    if (window.isInternalCopyOperation) {
-      console.log('🚫 Ignoring clipboard change - internal copy operation')
-      return
-    }
-
     updateQueueRef.current.push({ data, timestamp: Date.now() })
 
     if (debounceRef.current) {
@@ -342,6 +341,7 @@ function App() {
         if (settings.showTrayNotifications !== undefined) setShowTrayNotifications(settings.showTrayNotifications)
         if (settings.quickAccessHotkey) setQuickAccessHotkey(settings.quickAccessHotkey)
         if (settings.clearAllHotkey) setClearAllHotkey(settings.clearAllHotkey)
+        if (settings.maxHistoryItems) setMaxHistoryItems(Number(settings.maxHistoryItems))
         if (settings.autoStart !== undefined) {
           setAutoStart(settings.autoStart)
         } else {
@@ -375,10 +375,28 @@ function App() {
       autoStart,
       showTrayNotifications,
       quickAccessHotkey,
-      clearAllHotkey
+      clearAllHotkey,
+      maxHistoryItems
     }
     localStorage.setItem('appSettings', JSON.stringify(settings))
-  }, [theme, language, viewMode, closeBehavior, startMinimized, autoStart, showTrayNotifications, quickAccessHotkey, clearAllHotkey])
+  }, [theme, language, viewMode, closeBehavior, startMinimized, autoStart, showTrayNotifications, quickAccessHotkey, clearAllHotkey, maxHistoryItems])
+
+  // Keep maxHistoryItemsRef in sync and prune history if limit reduced
+  useEffect(() => {
+    maxHistoryItemsRef.current = maxHistoryItems
+    setClipboardHistory(prev => {
+      if (prev.length > maxHistoryItems) {
+        const dropped = prev.slice(maxHistoryItems)
+        dropped.forEach(d => {
+          if (d && d.type === 'image' && d.content && window.electronAPI?.media?.delete) {
+            window.electronAPI.media.delete(d.content)
+          }
+        })
+        return prev.slice(0, maxHistoryItems)
+      }
+      return prev
+    })
+  }, [maxHistoryItems])
 
   // Send hotkeys to main process
   useEffect(() => {
@@ -407,27 +425,25 @@ function App() {
   // Load clipboard history
   useEffect(() => {
     const saved = localStorage.getItem('clipboardHistory')
-    setTimeout(() => {
-      if (saved) {
-        try {
-          const savedData = JSON.parse(saved)
-          setClipboardHistory(savedData)
-          if (savedData.length > 0) {
-            lastContentRef.current = savedData[0].content
-            lastTypeRef.current = savedData[0].type
-          }
-          const activeImages = savedData
-            .filter(item => item.type === 'image' && item.content)
-            .map(item => item.content)
-          if (window.electronAPI?.media?.reconcile) {
-            window.electronAPI.media.reconcile(activeImages)
-          }
-        } catch {
-          setClipboardHistory([])
+    if (saved) {
+      try {
+        const savedData = JSON.parse(saved)
+        setClipboardHistory(savedData)
+        if (savedData.length > 0) {
+          lastContentRef.current = savedData[0].content
+          lastTypeRef.current = savedData[0].type
         }
+        const activeImages = savedData
+          .filter(item => item.type === 'image' && item.content)
+          .map(item => item.content)
+        if (window.electronAPI?.media?.reconcile) {
+          window.electronAPI.media.reconcile(activeImages)
+        }
+      } catch {
+        setClipboardHistory([])
       }
-      setLoading(false)
-    }, 800)
+    }
+    setLoading(false)
   }, [])
 
   // Clear history handler
@@ -442,130 +458,24 @@ function App() {
     updateQueueRef.current = []
   }, [])
 
-  // Set up clipboard monitoring
+  // Set up clipboard monitoring (LOW-02: dead browser fallback stripped)
   useEffect(() => {
-    if (window.electronAPI && window.electronAPI.clipboard) {
-      window.electronAPI.clipboard.startMonitoring()
+    if (!window.electronAPI?.clipboard) return;
 
-      const unsubscribeClipboard = window.electronAPI.clipboard.onChange(addClipboardItem)
-      
-      const unsubscribeClearAll = window.electronAPI.onClearAllShortcut && window.electronAPI.onClearAllShortcut(() => {
-        clearHistory()
-      })
-      
-      return () => {
-        if (debounceRef.current) {
-          clearTimeout(debounceRef.current)
-        }
-        if (internalCopyTimeoutRef.current) {
-          clearTimeout(internalCopyTimeoutRef.current)
-        }
-        updateQueueRef.current = []
-        window.electronAPI.clipboard.stopMonitoring()
-        unsubscribeClipboard()
-        if (unsubscribeClearAll) unsubscribeClearAll()
+    window.electronAPI.clipboard.startMonitoring();
+    const unsubscribeClipboard = window.electronAPI.clipboard.onChange(addClipboardItem);
+    const unsubscribeClearAll = window.electronAPI.onClearAllShortcut?.(clearHistory);
+
+    return () => {
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current);
       }
-    } else {
-      // Browser fallback (same as before)
-      let intervalId
-      let lastClipboardContent = ''
-      let isInitialized = false
-
-      const checkClipboard = async () => {
-        if (isUpdatingRef.current || window.isInternalCopyOperation) return
-
-        try {
-          const permissionStatus = await navigator.permissions.query({ name: 'clipboard-read' })
-          if (permissionStatus.state === 'denied') return
-
-          const currentContent = await navigator.clipboard.readText()
-          
-          if (!isInitialized) {
-            lastClipboardContent = currentContent
-            isInitialized = true
-            return
-          }
-          
-          if (currentContent && 
-              currentContent.trim() !== '' && 
-              currentContent !== lastClipboardContent &&
-              currentContent !== lastContentRef.current) {
-            
-            lastClipboardContent = currentContent
-            
-            addClipboardItem({
-              type: 'text',
-              content: currentContent,
-              timestamp: new Date().toISOString()
-            })
-            return
-          }
-
-          if (navigator.clipboard.read) {
-            try {
-              const clipboardItems = await navigator.clipboard.read()
-              
-              for (const clipboardItem of clipboardItems) {
-                for (const type of clipboardItem.types) {
-                  if (type.startsWith('image/')) {
-                    const blob = await clipboardItem.getType(type)
-                    const reader = new FileReader()
-                    
-                    reader.onload = (event) => {
-                      const imageData = event.target.result
-                      
-                      if (imageData && 
-                          imageData !== lastContentRef.current &&
-                          imageData.length > 1000) {
-                        
-                        addClipboardItem({
-                          type: 'image',
-                          content: imageData,
-                          timestamp: new Date().toISOString()
-                        })
-                      }
-                    }
-                    
-                    reader.readAsDataURL(blob)
-                    return
-                  }
-                }
-              }
-            } catch {
-              // Silent error handling
-            }
-          }
-
-        } catch {
-          // Silent error handling
-        }
-      }
-
-      const startMonitoring = async () => {
-        try {
-          await checkClipboard()
-          intervalId = setInterval(checkClipboard, 1500)
-        } catch {
-          // Silent error handling
-        }
-      }
-
-      startMonitoring()
-
-      return () => {
-        if (intervalId) {
-          clearInterval(intervalId)
-        }
-        if (debounceRef.current) {
-          clearTimeout(debounceRef.current)
-        }
-        if (internalCopyTimeoutRef.current) {
-          clearTimeout(internalCopyTimeoutRef.current)
-        }
-        updateQueueRef.current = []
-      }
-    }
-  }, [addClipboardItem, clearHistory])
+      updateQueueRef.current = [];
+      window.electronAPI.clipboard.stopMonitoring();
+      if (unsubscribeClipboard) unsubscribeClipboard();
+      if (unsubscribeClearAll) unsubscribeClearAll();
+    };
+  }, [addClipboardItem, clearHistory]);
 
   // Save to localStorage
   useEffect(() => {
@@ -602,19 +512,9 @@ function App() {
     })
   }, [])
 
-  // Simple copyToClipboard with global flag
+  // Simple copyToClipboard
   const copyToClipboard = useCallback(async (content, type) => {
     try {
-      console.log('📄 Starting internal copy operation')
-      
-      // Set global flag
-      window.isInternalCopyOperation = true
-      
-      // Clear previous timeout
-      if (internalCopyTimeoutRef.current) {
-        clearTimeout(internalCopyTimeoutRef.current)
-      }
-      
       if (window.electronAPI && window.electronAPI.clipboard) {
         if (type === 'image') {
           await window.electronAPI.clipboard.setImage(content)
@@ -632,20 +532,8 @@ function App() {
           await navigator.clipboard.writeText(content)
         }
       }
-      
-      console.log('✅ Internal copy completed')
-      
-      // Reset flag after 5 seconds
-      internalCopyTimeoutRef.current = setTimeout(() => {
-        window.isInternalCopyOperation = false
-        console.log('🔓 Internal copy flag reset')
-      }, 5000)
-      
     } catch (error) {
       console.error('❌ Copy operation failed:', error)
-      
-      // Reset flag on error
-      window.isInternalCopyOperation = false
       
       if (type !== 'image') {
         try {
@@ -736,6 +624,7 @@ function App() {
       setShowTrayNotifications(true)
       setQuickAccessHotkey('Ctrl+Shift+X')
       setClearAllHotkey('Ctrl+Shift+Delete')
+      setMaxHistoryItems(50)
       
       // Reset theme to dark with proper handling
       console.log('🔄 Resetting theme to dark')
@@ -826,6 +715,8 @@ function App() {
         setQuickAccessHotkey={setQuickAccessHotkey}
         clearAllHotkey={clearAllHotkey}
         setClearAllHotkey={setClearAllHotkey}
+        maxHistoryItems={maxHistoryItems}
+        setMaxHistoryItems={setMaxHistoryItems}
       />
 
       <ThemeBuilder

@@ -4,6 +4,11 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
 import { execFile } from 'child_process';
+import crypto from 'crypto';
+import { IPC_CHANNELS } from './ipc_channels.js';
+
+const MAX_LOG_SIZE_BYTES = 1024 * 1024; // 1 MB cap (LOW-03)
+let logCounter = 0;
 
 function getLogPath() {
   try { return path.join(app.getPath('userData'), 'app-debug.log'); }
@@ -12,8 +17,28 @@ function getLogPath() {
     catch { return path.join(app.getAppPath(), 'app-debug.log'); }
   }
 }
+
+function rotateLogIfNeeded(logPath) {
+  try {
+    if (fs.existsSync(logPath)) {
+      const stats = fs.statSync(logPath);
+      if (stats.size > MAX_LOG_SIZE_BYTES) {
+        const oldLogPath = logPath + '.old';
+        try { if (fs.existsSync(oldLogPath)) fs.unlinkSync(oldLogPath); } catch {}
+        fs.renameSync(logPath, oldLogPath);
+      }
+    }
+  } catch {}
+}
+
 function log(msg) {
-  try { fs.appendFileSync(getLogPath(), `${new Date().toISOString()} ${msg}\r\n`); } catch {}
+  try {
+    const logPath = getLogPath();
+    if (++logCounter % 100 === 1) {
+      rotateLogIfNeeded(logPath);
+    }
+    fs.appendFileSync(logPath, `${new Date().toISOString()} ${msg}\r\n`);
+  } catch {}
 }
 
 // --- Single Instance Lock ---
@@ -22,6 +47,7 @@ log(`SINGLE_INSTANCE_LOCK: ${gotTheLock}, argv: ${process.argv.join(' ')}`);
 if (!gotTheLock) {
   log('QUITTING: another instance holds the lock');
   app.quit();
+  process.exit(0);
 }
 
 // Cap Chromium compositor frame rate to 120 FPS to prevent GPU saturation on high-refresh displays
@@ -167,10 +193,44 @@ function saveConfig() {
 // เพิ่มตัวแปรสำหรับ clipboard monitoring (ADR-0003)
 let clipboardMonitorInterval = null;
 let lastClipboardText = '';
-let lastClipboardImage = '';
-let lastImageSize = null;
+let lastClipboardImageHash = '';
 let isMonitoringActive = false;
 let isInternalCopy = false;
+
+function getClipboardImageHash(nativeImg) {
+  if (!nativeImg || nativeImg.isEmpty()) return '';
+  try {
+    const bitmap = nativeImg.toBitmap();
+    return crypto.createHash('md5').update(bitmap).digest('hex');
+  } catch {
+    return '';
+  }
+}
+
+function processClipboardImage(image) {
+  if (!image || image.isEmpty()) return false;
+  try {
+    const imageHash = getClipboardImageHash(image);
+    if (!imageHash || imageHash === lastClipboardImageHash) {
+      return false;
+    }
+
+    lastClipboardImageHash = imageHash;
+
+    const filePath = saveImageToDisk(image);
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send(IPC_CHANNELS.CLIPBOARD_CHANGED, {
+        type: 'image',
+        content: filePath,
+        timestamp: new Date().toISOString()
+      });
+    }
+    return true;
+  } catch (err) {
+    log(`processClipboardImage error: ${err}`);
+    return false;
+  }
+}
 
 const clipboardDebouncer = new ClipboardDebouncer({
   delayMs: 50,
@@ -192,7 +252,7 @@ function checkClipboardContent() {
       lastClipboardText = currentText;
       
       if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('clipboard-changed', {
+        mainWindow.webContents.send(IPC_CHANNELS.CLIPBOARD_CHANGED, {
           type: 'text',
           content: currentText,
           timestamp: new Date().toISOString()
@@ -205,46 +265,10 @@ function checkClipboardContent() {
     const hasImageFormat = formats.some(f => f.includes('image') || f === 'CF_DIB' || f === 'CF_BITMAP');
     if (hasImageFormat) {
       const currentImage = clipboard.readImage();
-      if (!currentImage.isEmpty()) {
-        const imgSize = currentImage.getSize();
-        const sameAsLast = lastImageSize && 
-                           lastImageSize.width === imgSize.width && 
-                           lastImageSize.height === imgSize.height && 
-                           lastClipboardImage !== '';
-        if (!sameAsLast) {
-          const imageDataURL = currentImage.toDataURL();
-          if (imageDataURL && 
-              imageDataURL !== lastClipboardImage && 
-              imageDataURL !== '' &&
-              imageDataURL.length > 100 &&
-              imageDataURL.length < 50000000) {
-            
-            lastClipboardImage = imageDataURL;
-            lastImageSize = imgSize;
-            
-            let thumbnailDataURL = imageDataURL;
-            try {
-              if (imgSize.height > 140) {
-                const targetWidth = Math.max(1, Math.round(imgSize.width * (140 / imgSize.height)));
-                thumbnailDataURL = currentImage.resize({ width: targetWidth, height: 140, quality: 'better' }).toDataURL();
-              }
-            } catch {}
-            
-            const filePath = saveImageToDisk(currentImage);
-            if (mainWindow && !mainWindow.isDestroyed()) {
-              mainWindow.webContents.send('clipboard-changed', {
-                type: 'image',
-                content: filePath,
-                thumbnail: thumbnailDataURL,
-                timestamp: new Date().toISOString()
-              });
-            }
-          }
-        }
-      }
+      processClipboardImage(currentImage);
     }
-  } catch {
-    // Silent error handling
+  } catch (err) {
+    log(`checkClipboardContent error: ${err.message}`);
   }
 }
 let internalCopyTimeout = null;
@@ -254,7 +278,7 @@ function markInternalCopy() {
   if (internalCopyTimeout) clearTimeout(internalCopyTimeout);
   internalCopyTimeout = setTimeout(() => {
     isInternalCopy = false;
-  }, 1200);
+  }, 200);
 }
 
 function findIndexHtml() {
@@ -350,7 +374,7 @@ function startClipboardMonitoring() {
   try {
     lastClipboardText = clipboard.readText();
     const image = clipboard.readImage();
-    lastClipboardImage = image.isEmpty() ? '' : image.toDataURL();
+    lastClipboardImageHash = getClipboardImageHash(image);
   } catch {
     // Silent error handling
   }
@@ -389,7 +413,7 @@ function registerGlobalShortcuts() {
       const clearAllKey = hotkeys.clearAll.replace('Ctrl', process.platform === 'darwin' ? 'Cmd' : 'Ctrl');
       globalShortcut.register(clearAllKey, () => {
         if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('clear-all-shortcut');
+          mainWindow.webContents.send(IPC_CHANNELS.CLEAR_ALL_SHORTCUT);
         }
       });
     }
@@ -417,8 +441,8 @@ function registerGlobalShortcuts() {
         setTimeout(checkClipboardForScreenshot, 2500);
       });
     }
-  } catch {
-    // Silent error handling
+  } catch (err) {
+    log(`registerGlobalShortcuts error: ${err.message}`);
   }
 }
 
@@ -461,38 +485,7 @@ async function checkClipboardForScreenshot() {
     if (!hasImageFormat) return;
 
     const image = clipboard.readImage();
-    if (!image.isEmpty()) {
-      const imgSize = image.getSize();
-      const sameAsLast = lastImageSize && 
-                         lastImageSize.width === imgSize.width && 
-                         lastImageSize.height === imgSize.height && 
-                         lastClipboardImage !== '';
-      if (!sameAsLast) {
-        const imageDataURL = image.toDataURL();
-        if (imageDataURL && imageDataURL !== lastClipboardImage && imageDataURL.length > 100) {
-          lastClipboardImage = imageDataURL;
-          lastImageSize = imgSize;
-          
-          let thumbnailDataURL = imageDataURL;
-          try {
-            if (imgSize.height > 140) {
-              const targetWidth = Math.max(1, Math.round(imgSize.width * (140 / imgSize.height)));
-              thumbnailDataURL = image.resize({ width: targetWidth, height: 140, quality: 'better' }).toDataURL();
-            }
-          } catch {}
-          
-          const filePath = saveImageToDisk(image);
-          if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.send('clipboard-changed', {
-              type: 'image',
-              content: filePath,
-              thumbnail: thumbnailDataURL,
-              timestamp: new Date().toISOString()
-            });
-          }
-        }
-      }
-    }
+    processClipboardImage(image);
   } catch {
     // Silent error handling
   }
@@ -610,6 +603,7 @@ function createWindow() {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
+      sandbox: true,
       enableRemoteModule: false,
       preload: path.join(__dirname, 'preload.js'),
       backgroundThrottling: true,
@@ -619,6 +613,31 @@ function createWindow() {
     backgroundColor: '#0a0a0a',
     transparent: false,
     hasShadow: true
+  });
+
+  // Electron Security: Intercept window.open / <a target="_blank">
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    try {
+      const parsed = new URL(url);
+      if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+        shell.openExternal(url);
+      }
+    } catch {}
+    return { action: 'deny' };
+  });
+
+  // Electron Security: Prevent navigation away from the app
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    const currentURL = mainWindow.webContents.getURL();
+    if (currentURL && url !== currentURL) {
+      event.preventDefault();
+      try {
+        const parsed = new URL(url);
+        if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+          shell.openExternal(url);
+        }
+      } catch {}
+    }
   });
 
   if (process.env.NODE_ENV === 'development') {
@@ -680,13 +699,30 @@ function createWindow() {
     }
   }
 
-  // Window controls
-  ipcMain.handle('window-minimize', () => {
-    if (mainWindow) mainWindow.minimize();
+  mainWindow.on('maximize', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send(IPC_CHANNELS.WINDOW_MAXIMIZED_EVENT, true);
+    }
   });
 
-  ipcMain.handle('window-maximize', () => {
-    if (mainWindow) {
+  mainWindow.on('unmaximize', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send(IPC_CHANNELS.WINDOW_MAXIMIZED_EVENT, false);
+    }
+  });
+
+  if (!tray) {
+    createTray();
+  }
+}
+
+function registerWindowIpcHandlers() {
+  ipcMain.handle(IPC_CHANNELS.WINDOW_MINIMIZE, () => {
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.minimize();
+  });
+
+  ipcMain.handle(IPC_CHANNELS.WINDOW_MAXIMIZE, () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
       if (mainWindow.isMaximized()) {
         mainWindow.unmaximize();
       } else {
@@ -695,8 +731,8 @@ function createWindow() {
     }
   });
 
-  ipcMain.handle('window-close', () => {
-    if (mainWindow) {
+  ipcMain.handle(IPC_CHANNELS.WINDOW_CLOSE, () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
       if (closeBehavior === 'minimize') {
         hideWindow();
       } else {
@@ -705,24 +741,31 @@ function createWindow() {
     }
   });
 
-  ipcMain.handle('window-is-maximized', () => {
-    return mainWindow ? mainWindow.isMaximized() : false;
+  ipcMain.handle(IPC_CHANNELS.WINDOW_IS_MAXIMIZED, () => {
+    return mainWindow && !mainWindow.isDestroyed() ? mainWindow.isMaximized() : false;
   });
 
-  mainWindow.on('maximize', () => {
-    mainWindow.webContents.send('window-maximized', true);
-  });
-
-  mainWindow.on('unmaximize', () => {
-    mainWindow.webContents.send('window-maximized', false);
-  });
-
-  ipcMain.handle('trim-memory', () => {
+  ipcMain.handle(IPC_CHANNELS.TRIM_MEMORY, () => {
     trimMemory();
     return true;
   });
 
-  ipcMain.handle('open-external', async (_event, rawUrl) => {
+  ipcMain.handle(IPC_CHANNELS.SHOW_WINDOW, () => {
+    showWindow();
+    return true;
+  });
+
+  ipcMain.handle(IPC_CHANNELS.HIDE_WINDOW, () => {
+    hideWindow();
+    return true;
+  });
+
+  ipcMain.handle(IPC_CHANNELS.QUIT_APP, () => {
+    quitApp();
+    return true;
+  });
+
+  ipcMain.handle(IPC_CHANNELS.OPEN_EXTERNAL, async (_event, rawUrl) => {
     try {
       if (rawUrl && typeof rawUrl === 'string') {
         const parsed = new URL(rawUrl);
@@ -736,12 +779,11 @@ function createWindow() {
     }
     return false;
   });
-
-  createTray();
 }
 
 app.whenReady().then(() => {
   initializeAutoStart();
+  registerWindowIpcHandlers();
   createWindow();
 
   app.on('second-instance', () => {
@@ -791,73 +833,101 @@ process.on('unhandledRejection', (err) => {
   log(`UNHANDLED_REJECTION: ${err ? err.stack || err : 'unknown'}`);
 });
 
-// IPC handlers สำหรับ clipboard
-ipcMain.handle('start-clipboard-monitoring', () => {
-  startClipboardMonitoring();
-  return true;
+// IPC handlers สำหรับ clipboard (LOW-01, LOW-04, LOW-05)
+ipcMain.handle(IPC_CHANNELS.START_MONITORING, () => {
+  try {
+    startClipboardMonitoring();
+    return true;
+  } catch (err) {
+    log(`start-clipboard-monitoring error: ${err.message}`);
+    return false;
+  }
 });
 
-ipcMain.handle('stop-clipboard-monitoring', () => {
-  stopClipboardMonitoring();
-  return true;
+ipcMain.handle(IPC_CHANNELS.STOP_MONITORING, () => {
+  try {
+    stopClipboardMonitoring();
+    return true;
+  } catch (err) {
+    log(`stop-clipboard-monitoring error: ${err.message}`);
+    return false;
+  }
 });
 
-ipcMain.handle('get-clipboard-text', () => {
+ipcMain.handle(IPC_CHANNELS.GET_TEXT, () => {
   try {
     return clipboard.readText();
-  } catch {
+  } catch (err) {
+    log(`get-clipboard-text error: ${err.message}`);
     return '';
   }
 });
 
-ipcMain.handle('get-clipboard-image', () => {
+ipcMain.handle(IPC_CHANNELS.GET_IMAGE, () => {
   try {
     const image = clipboard.readImage();
     return image.isEmpty() ? null : image.toDataURL();
-  } catch {
+  } catch (err) {
+    log(`get-clipboard-image error: ${err.message}`);
     return null;
   }
 });
 
 // ปรับปรุง IPC handlers สำหรับ set clipboard - ไม่ต้องใช้ internal flags แล้ว
-ipcMain.handle('set-clipboard-text', (event, text) => {
+ipcMain.handle(IPC_CHANNELS.SET_TEXT, (event, text) => {
   try {
+    if (typeof text !== 'string') {
+      log('set-clipboard-text rejected: argument must be a string');
+      return false;
+    }
     markInternalCopy();
     lastClipboardText = text;
     clipboard.writeText(text);
     return true;
-  } catch {
+  } catch (err) {
+    log(`set-clipboard-text error: ${err.message}`);
     return false;
   }
 });
 
-ipcMain.handle('set-clipboard-image', (event, imageSource) => {
+ipcMain.handle(IPC_CHANNELS.SET_IMAGE, (event, imageSource) => {
   try {
+    if (!imageSource || typeof imageSource !== 'string') {
+      log('set-clipboard-image rejected: invalid imageSource argument');
+      return false;
+    }
     markInternalCopy();
-    lastClipboardImage = imageSource;
     let image;
-    if (typeof imageSource === 'string' && (imageSource.startsWith('data:image/') || imageSource.includes('base64'))) {
+    if (imageSource.startsWith('data:image/') || imageSource.includes('base64')) {
       image = nativeImage.createFromDataURL(imageSource);
-    } else if (typeof imageSource === 'string' && fs.existsSync(imageSource)) {
+    } else if (fs.existsSync(imageSource)) {
       image = nativeImage.createFromPath(imageSource);
     } else {
       image = nativeImage.createFromDataURL(imageSource);
     }
-    lastImageSize = image.getSize();
+    if (!image || image.isEmpty()) {
+      log('set-clipboard-image rejected: failed to create valid nativeImage');
+      return false;
+    }
+    lastClipboardImageHash = getClipboardImageHash(image);
     clipboard.writeImage(image);
     return true;
-  } catch {
+  } catch (err) {
+    log(`set-clipboard-image error: ${err.message}`);
     return false;
   }
 });
 
 // IPC handlers for media storage lifecycle (ADR-0002)
-ipcMain.handle('media:delete', async (event, filePath) => {
+ipcMain.handle(IPC_CHANNELS.MEDIA_DELETE, async (event, filePath) => {
   try {
     if (filePath && typeof filePath === 'string') {
       const resolvedTarget = path.resolve(filePath);
       const resolvedMediaDir = path.resolve(mediaDir);
-      if (resolvedTarget.startsWith(resolvedMediaDir + path.sep) && fs.existsSync(resolvedTarget)) {
+      const isWindows = process.platform === 'win32';
+      const targetCheck = isWindows ? resolvedTarget.toLowerCase() : resolvedTarget;
+      const dirCheck = isWindows ? resolvedMediaDir.toLowerCase() : resolvedMediaDir;
+      if (targetCheck.startsWith(dirCheck + path.sep) && fs.existsSync(resolvedTarget)) {
         await fs.promises.unlink(resolvedTarget);
         return true;
       }
@@ -868,22 +938,28 @@ ipcMain.handle('media:delete', async (event, filePath) => {
   return false;
 });
 
-ipcMain.handle('media:clear-all', async () => {
+ipcMain.handle(IPC_CHANNELS.MEDIA_CLEAR_ALL, async () => {
   try {
+    lastClipboardImageHash = '';
+    lastClipboardText = '';
     if (fs.existsSync(mediaDir)) {
       const files = await fs.promises.readdir(mediaDir);
       for (const f of files) {
         if (f.endsWith('.png')) {
-          await fs.promises.unlink(path.join(mediaDir, f)).catch(() => {});
+          await fs.promises.unlink(path.join(mediaDir, f)).catch(err => {
+            log(`media:clear-all unlink error: ${err.message}`);
+          });
         }
       }
     }
     return true;
-  } catch {}
-  return false;
+  } catch (err) {
+    log(`media:clear-all error: ${err.message}`);
+    return false;
+  }
 });
 
-ipcMain.handle('media:reconcile', async (event, activeFilePaths) => {
+ipcMain.handle(IPC_CHANNELS.MEDIA_RECONCILE, async (event, activeFilePaths) => {
   try {
     if (fs.existsSync(mediaDir) && Array.isArray(activeFilePaths)) {
       const activeSet = new Set(activeFilePaths.map(p => path.normalize(p).toLowerCase()));
@@ -892,30 +968,38 @@ ipcMain.handle('media:reconcile', async (event, activeFilePaths) => {
         if (f.endsWith('.png')) {
           const full = path.normalize(path.join(mediaDir, f)).toLowerCase();
           if (!activeSet.has(full)) {
-            await fs.promises.unlink(path.join(mediaDir, f)).catch(() => {});
+            await fs.promises.unlink(path.join(mediaDir, f)).catch(err => {
+              log(`media:reconcile unlink error: ${err.message}`);
+            });
           }
         }
       }
     }
     return true;
-  } catch {}
-  return false;
+  } catch (err) {
+    log(`media:reconcile error: ${err.message}`);
+    return false;
+  }
 });
 
 // IPC handler สำหรับ close behavior setting
-ipcMain.handle('set-close-behavior', (event, behavior) => {
+ipcMain.handle(IPC_CHANNELS.SET_CLOSE_BEHAVIOR, (event, behavior) => {
+  if (behavior !== 'minimize' && behavior !== 'close') {
+    log(`set-close-behavior rejected: invalid behavior "${behavior}"`);
+    return false;
+  }
   closeBehavior = behavior;
   saveConfig();
   return true;
 });
 
-ipcMain.handle('get-close-behavior', () => {
+ipcMain.handle(IPC_CHANNELS.GET_CLOSE_BEHAVIOR, () => {
   return closeBehavior;
 });
 
 // IPC handlers สำหรับ start minimized setting
-ipcMain.handle('set-start-minimized', (event, minimized) => {
-  startMinimized = minimized;
+ipcMain.handle(IPC_CHANNELS.SET_START_MINIMIZED, (event, minimized) => {
+  startMinimized = Boolean(minimized);
   saveConfig();
   
   if (openAtLogin) {
@@ -925,31 +1009,43 @@ ipcMain.handle('set-start-minimized', (event, minimized) => {
   return true;
 });
 
-ipcMain.handle('get-start-minimized', () => {
+ipcMain.handle(IPC_CHANNELS.GET_START_MINIMIZED, () => {
   return startMinimized;
 });
 
 // IPC handlers สำหรับ Auto Start
-ipcMain.handle('set-auto-start', (event, enabled) => {
-  return setAutoStart(enabled);
+ipcMain.handle(IPC_CHANNELS.SET_AUTO_START, (event, enabled) => {
+  return setAutoStart(Boolean(enabled));
 });
 
-ipcMain.handle('get-auto-start', () => {
+ipcMain.handle(IPC_CHANNELS.GET_AUTO_START, () => {
   const status = getAutoStartStatus();
   return status.openAtLogin;
 });
 
-ipcMain.handle('get-auto-start-status', () => {
+ipcMain.handle(IPC_CHANNELS.GET_AUTO_START_STATUS, () => {
   return getAutoStartStatus();
 });
 
 // IPC handlers สำหรับ hotkeys
-ipcMain.handle('update-hotkeys', (event, newHotkeys) => {
-  hotkeys = { ...hotkeys, ...newHotkeys };
-  registerGlobalShortcuts();
-  return true;
+ipcMain.handle(IPC_CHANNELS.UPDATE_HOTKEYS, (event, newHotkeys) => {
+  try {
+    if (!newHotkeys || typeof newHotkeys !== 'object') {
+      log('update-hotkeys rejected: argument must be an object');
+      return false;
+    }
+    const sanitized = {};
+    if (typeof newHotkeys.quickAccess === 'string') sanitized.quickAccess = newHotkeys.quickAccess;
+    if (typeof newHotkeys.clearAll === 'string') sanitized.clearAll = newHotkeys.clearAll;
+    hotkeys = { ...hotkeys, ...sanitized };
+    registerGlobalShortcuts();
+    return true;
+  } catch (err) {
+    log(`update-hotkeys error: ${err.message}`);
+    return false;
+  }
 });
 
-ipcMain.handle('get-hotkeys', () => {
+ipcMain.handle(IPC_CHANNELS.GET_HOTKEYS, () => {
   return hotkeys;
 });
