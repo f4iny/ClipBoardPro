@@ -13,6 +13,9 @@ This file tracks all identified bugs, their root causes, and their verified fixe
 | **BUG-007** | High Idle Memory Footprint in Tray (~476 MB Working Set) | Medium | **RESOLVED** | ADR 0001 & `test/electron/memory_trim.test.js` |
 | **BUG-008** | GPU/CPU Load Spike during Active Scrolling on 240 Hz Displays | High | **RESOLVED** | Hardware compositing layers & CSS refactor |
 | **BUG-009** | Dormant Clipboard Monitoring on Windows (Missing OS Clipboard Listener Registration) | Critical | **RESOLVED** | Active cross-platform 350ms debounced interval |
+| **BUG-010** | High GPU Load (~47%) During Scrolling from Backdrop Shaders | High | **RESOLVED** | Shader purge, 120 FPS cap & CSS variable refactor |
+| **BUG-011** | Secondary Instance Lock Exit Bypass (Async `app.quit()` Continuation) | Critical | **RESOLVED** | Synchronous `process.exit(0)` on lock failure |
+| **BUG-012** | Consecutive Matching-Resolution Screenshots Discarded & V8 Heap Bloat | Critical | **RESOLVED** | `test/electron/image_deduplication.test.js` & Bitmap MD5 Hashing |
 
 ---
 
@@ -78,4 +81,18 @@ This file tracks all identified bugs, their root causes, and their verified fixe
   - Replaced card `box-shadow` with crisp hardware-composited `1px solid var(--border-secondary)` borders.
   - Added Chromium command-line switch `app.commandLine.appendSwitch('limit-fps', '120')` in `main.js`.
   - Replaced JS `MutationObserver` and `getComputedStyle` in `ClipboardItem.jsx` with native CSS variables scoped to card type classes (`.text`, `.code`, `.image`).
+
+#### BUG-011: Secondary Instance Lock Exit Bypass (Async `app.quit()` Continuation)
+- **Symptoms:** Running a second instance of `ClipBoardPro.exe` caused file-lock contention and flickering tray icon/window creation before quitting.
+- **Root Cause:** `app.quit()` in Electron is asynchronous and signals the event loop to exit on the next tick. The secondary instance continued synchronous execution through the rest of `main.js`, creating media directories, loading configuration, and attaching `app.whenReady()` handlers.
+- **Resolution:** Added synchronous `process.exit(0)` immediately following `app.quit()` when `!gotTheLock`.
+
+#### BUG-012: Consecutive Matching-Resolution Screenshots Discarded & V8 Heap Bloat
+- **Symptoms:** Taking two consecutive full-screen screenshots (or copying two distinct images sharing the same dimensions, e.g. 1920x1080) caused the second image to be silently ignored and dropped from history. Furthermore, V8 heap was bloated with up to 50 MB DataURLs in `lastClipboardImage`.
+- **Root Cause:** Image deduplication checked `sameAsLast = lastImageSize.width === imgSize.width && lastImageSize.height === imgSize.height`. If dimensions matched, `if (!sameAsLast)` short-circuited the entire save-to-disk and IPC notification pipeline, making the content check unreachable.
+- **Resolution:**
+  - Replaced dimension check and 50 MB Base64 string retention with fast bitmap MD5 hashing (`crypto.createHash('md5').update(currentImage.toBitmap()).digest('hex')`).
+  - Unified screenshot and clipboard image handling into a single deduplicated `processClipboardImage` function.
+  - Verified with `test/electron/image_deduplication.test.js`.
+
 

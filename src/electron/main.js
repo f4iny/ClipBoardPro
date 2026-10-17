@@ -4,6 +4,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
 import { execFile } from 'child_process';
+import crypto from 'crypto';
 
 function getLogPath() {
   try { return path.join(app.getPath('userData'), 'app-debug.log'); }
@@ -22,6 +23,7 @@ log(`SINGLE_INSTANCE_LOCK: ${gotTheLock}, argv: ${process.argv.join(' ')}`);
 if (!gotTheLock) {
   log('QUITTING: another instance holds the lock');
   app.quit();
+  process.exit(0);
 }
 
 // Cap Chromium compositor frame rate to 120 FPS to prevent GPU saturation on high-refresh displays
@@ -167,10 +169,58 @@ function saveConfig() {
 // เพิ่มตัวแปรสำหรับ clipboard monitoring (ADR-0003)
 let clipboardMonitorInterval = null;
 let lastClipboardText = '';
-let lastClipboardImage = '';
+let lastClipboardImageHash = '';
 let lastImageSize = null;
 let isMonitoringActive = false;
 let isInternalCopy = false;
+
+function getClipboardImageHash(nativeImg) {
+  if (!nativeImg || nativeImg.isEmpty()) return '';
+  try {
+    const bitmap = nativeImg.toBitmap();
+    return crypto.createHash('md5').update(bitmap).digest('hex');
+  } catch {
+    return '';
+  }
+}
+
+function processClipboardImage(image) {
+  if (!image || image.isEmpty()) return false;
+  try {
+    const imageHash = getClipboardImageHash(image);
+    if (!imageHash || imageHash === lastClipboardImageHash) {
+      return false;
+    }
+
+    const imgSize = image.getSize();
+    lastClipboardImageHash = imageHash;
+    lastImageSize = imgSize;
+
+    let thumbnailDataURL = '';
+    try {
+      if (imgSize.height > 140) {
+        const targetWidth = Math.max(1, Math.round(imgSize.width * (140 / imgSize.height)));
+        thumbnailDataURL = image.resize({ width: targetWidth, height: 140, quality: 'better' }).toDataURL();
+      } else {
+        thumbnailDataURL = image.toDataURL();
+      }
+    } catch {}
+
+    const filePath = saveImageToDisk(image);
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('clipboard-changed', {
+        type: 'image',
+        content: filePath,
+        thumbnail: thumbnailDataURL,
+        timestamp: new Date().toISOString()
+      });
+    }
+    return true;
+  } catch (err) {
+    log(`processClipboardImage error: ${err}`);
+    return false;
+  }
+}
 
 const clipboardDebouncer = new ClipboardDebouncer({
   delayMs: 50,
@@ -205,43 +255,7 @@ function checkClipboardContent() {
     const hasImageFormat = formats.some(f => f.includes('image') || f === 'CF_DIB' || f === 'CF_BITMAP');
     if (hasImageFormat) {
       const currentImage = clipboard.readImage();
-      if (!currentImage.isEmpty()) {
-        const imgSize = currentImage.getSize();
-        const sameAsLast = lastImageSize && 
-                           lastImageSize.width === imgSize.width && 
-                           lastImageSize.height === imgSize.height && 
-                           lastClipboardImage !== '';
-        if (!sameAsLast) {
-          const imageDataURL = currentImage.toDataURL();
-          if (imageDataURL && 
-              imageDataURL !== lastClipboardImage && 
-              imageDataURL !== '' &&
-              imageDataURL.length > 100 &&
-              imageDataURL.length < 50000000) {
-            
-            lastClipboardImage = imageDataURL;
-            lastImageSize = imgSize;
-            
-            let thumbnailDataURL = imageDataURL;
-            try {
-              if (imgSize.height > 140) {
-                const targetWidth = Math.max(1, Math.round(imgSize.width * (140 / imgSize.height)));
-                thumbnailDataURL = currentImage.resize({ width: targetWidth, height: 140, quality: 'better' }).toDataURL();
-              }
-            } catch {}
-            
-            const filePath = saveImageToDisk(currentImage);
-            if (mainWindow && !mainWindow.isDestroyed()) {
-              mainWindow.webContents.send('clipboard-changed', {
-                type: 'image',
-                content: filePath,
-                thumbnail: thumbnailDataURL,
-                timestamp: new Date().toISOString()
-              });
-            }
-          }
-        }
-      }
+      processClipboardImage(currentImage);
     }
   } catch {
     // Silent error handling
@@ -350,7 +364,10 @@ function startClipboardMonitoring() {
   try {
     lastClipboardText = clipboard.readText();
     const image = clipboard.readImage();
-    lastClipboardImage = image.isEmpty() ? '' : image.toDataURL();
+    lastClipboardImageHash = getClipboardImageHash(image);
+    if (!image.isEmpty()) {
+      lastImageSize = image.getSize();
+    }
   } catch {
     // Silent error handling
   }
@@ -461,38 +478,7 @@ async function checkClipboardForScreenshot() {
     if (!hasImageFormat) return;
 
     const image = clipboard.readImage();
-    if (!image.isEmpty()) {
-      const imgSize = image.getSize();
-      const sameAsLast = lastImageSize && 
-                         lastImageSize.width === imgSize.width && 
-                         lastImageSize.height === imgSize.height && 
-                         lastClipboardImage !== '';
-      if (!sameAsLast) {
-        const imageDataURL = image.toDataURL();
-        if (imageDataURL && imageDataURL !== lastClipboardImage && imageDataURL.length > 100) {
-          lastClipboardImage = imageDataURL;
-          lastImageSize = imgSize;
-          
-          let thumbnailDataURL = imageDataURL;
-          try {
-            if (imgSize.height > 140) {
-              const targetWidth = Math.max(1, Math.round(imgSize.width * (140 / imgSize.height)));
-              thumbnailDataURL = image.resize({ width: targetWidth, height: 140, quality: 'better' }).toDataURL();
-            }
-          } catch {}
-          
-          const filePath = saveImageToDisk(image);
-          if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.send('clipboard-changed', {
-              type: 'image',
-              content: filePath,
-              thumbnail: thumbnailDataURL,
-              timestamp: new Date().toISOString()
-            });
-          }
-        }
-      }
-    }
+    processClipboardImage(image);
   } catch {
     // Silent error handling
   }
@@ -834,7 +820,6 @@ ipcMain.handle('set-clipboard-text', (event, text) => {
 ipcMain.handle('set-clipboard-image', (event, imageSource) => {
   try {
     markInternalCopy();
-    lastClipboardImage = imageSource;
     let image;
     if (typeof imageSource === 'string' && (imageSource.startsWith('data:image/') || imageSource.includes('base64'))) {
       image = nativeImage.createFromDataURL(imageSource);
@@ -844,6 +829,7 @@ ipcMain.handle('set-clipboard-image', (event, imageSource) => {
       image = nativeImage.createFromDataURL(imageSource);
     }
     lastImageSize = image.getSize();
+    lastClipboardImageHash = getClipboardImageHash(image);
     clipboard.writeImage(image);
     return true;
   } catch {
@@ -870,6 +856,7 @@ ipcMain.handle('media:delete', async (event, filePath) => {
 
 ipcMain.handle('media:clear-all', async () => {
   try {
+    lastClipboardImageHash = '';
     if (fs.existsSync(mediaDir)) {
       const files = await fs.promises.readdir(mediaDir);
       for (const f of files) {
